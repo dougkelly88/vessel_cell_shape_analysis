@@ -7,48 +7,44 @@ import os, sys
 # java imports - aim to have UI components entirely swing, listeners and layouts awt
 from java.awt import Dimension, GridBagLayout, GridBagConstraints, GridLayout
 import javax.swing as swing
+import javax.swing.table.TableModel
 
 # imagej imports
 from ij.gui import NonBlockingGenericDialog
 from ij.io import DirectoryChooser
 
+# custom imports
+script_path = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(script_path)
+
+def quickSetGridBagConstraints(gridbagconstraints, gridx, gridy, weightx, weighty):
+	gridbagconstraints.weightx = weightx;
+	gridbagconstraints.weighty = weighty;
+	gridbagconstraints.gridx = gridx;
+	gridbagconstraints.gridy = gridy;
+	return gridbagconstraints;
+
 def generateUI(file_list):
 	# window
-	frame = swing.JFrame("ROI vessel tool")
+	frame = swing.JFrame("Marcksl1 prescreen tool")
 	frame.setDefaultCloseOperation(swing.JFrame.DISPOSE_ON_CLOSE)
-	frame.setPreferredSize(Dimension(500, 500))
-	frame.setSize(Dimension(500, 500))
+	frame.setPreferredSize(Dimension(700, 500))
+	frame.setSize(Dimension(700, 500))
 	frame.setLocationByPlatform(True)
 	
-	#dialog = NonBlockingGenericDialog("ROI vessel tool")
-	#dialog.setPreferredSize(awt.Dimension(500, 500))
 	layout = GridBagLayout()
 	frame.setLayout(layout)
 
 	# image list
-	lst_constraints = GridBagConstraints()
-	lst_constraints.fill = GridBagConstraints.BOTH
-	lst_constraints.weightx = 0.5
-	lst_constraints.weighty = 0.8
-	lst_constraints.gridx = 0
-	lst_constraints.gridy = 0
+	lst_constraints = quickSetGridBagConstraints(GridBagConstraints(), 0, 0, 0.5, 0.33);
+	lst_constraints.fill = GridBagConstraints.BOTH;
 	lst = swing.JList(file_list)
 	lst_scrollpane = swing.JScrollPane(lst)
 	layout.setConstraints(lst_scrollpane, lst_constraints)
 	frame.add(lst_scrollpane)
 	
-	
-	#lst = awt.List(10, False)
-	#[lst.add(item) for item in file_list]
-	#layout.setConstraints(lst, lst_constraints)
-	#dialog.add(lst)
-
 	# radio buttons
-	radio_panel_constraints = GridBagConstraints()
-	radio_panel_constraints.weightx = 0.5
-	radio_panel_constraints.weighty = 0.8
-	radio_panel_constraints.gridx = 1
-	radio_panel_constraints.gridy = 0
+	radio_panel_constraints = quickSetGridBagConstraints(GridBagConstraints(), 1, 0, 0.25, 0.33)
 	radio_panel_constraints.fill = GridBagConstraints.HORIZONTAL
 	
 	isvButton = swing.JRadioButton("ISV", True)
@@ -67,16 +63,47 @@ def generateUI(file_list):
 		swing.BorderFactory.createEtchedBorder(), "Vessel type"))
 	layout.setConstraints(radio_panel, radio_panel_constraints)
 	frame.add(radio_panel)
-	#radio_frame = awt.ButtonGroup();
-	#radio_frame_constraints = awt.GridBagConstraints()
-	#radio_frame_constraints.weightx = 0.5
-	#radio_frame_constraints.weighty = 0.8
-	#radio_frame_constraints.gridx = 1
-	#radio_frame_constraints.gridy = 0
+	
+	# checkboxes
+	chk_constraints = quickSetGridBagConstraints(GridBagConstraints(), 2, 0, 0.25, 0.33);
+	chk_constraints.fill = GridBagConstraints.HORIZONTAL;
+	chkbox = swing.JCheckBox("Is lumenised?", True);
+	layout.setConstraints(chkbox, chk_constraints);
+	frame.add(chkbox);
+
+	# add ROI button
+	roi_but_constraints = quickSetGridBagConstraints(GridBagConstraints(), 0, 1, 1, 0.16);
+	roi_but_constraints.gridwidth = 3;
+	roi_but_constraints.fill = GridBagConstraints.BOTH;
+	roi_but = swing.JButton("Add current ROI")
+	layout.setConstraints(roi_but, roi_but_constraints);
+	frame.add(roi_but);
+
+    # metadata display table
+	mdtbl_constraints = quickSetGridBagConstraints(GridBagConstraints(), 0, 2, 1, 0.33);
+	mdtbl_constraints.gridwidth = 3;
+	mdtbl_constraints.fill = GridBagConstraints.BOTH;
+
+	mdtbl_colnames = ['Experiment', 'Embryo', 'Imaged region index', 'ROI index', 'Vessel type', 'Lumenised?'];
+	mdtbl_model = swing.table.DefaultTableModel(mdtbl_colnames, 10);
+	mdtbl = swing.JTable();
+	
+	mdtbl_scrollpane = swing.JScrollPane(mdtbl);
+	layout.setConstraints(mdtbl_scrollpane, mdtbl_constraints);
+	frame.add(mdtbl_scrollpane);
 
 	# buttons
-	#buts = dialog.getButtons()
-	#print(buts)
+	del_but_constraints = quickSetGridBagConstraints(GridBagConstraints(), 1, 3, 0.25, 0.16);
+	del_but_constraints.fill = GridBagConstraints.BOTH;
+	del_but = swing.JButton("Delete selected ROI");
+	layout.setConstraints(del_but, del_but_constraints);
+	frame.add(del_but);
+
+	save_but_constraints = quickSetGridBagConstraints(GridBagConstraints(), 2, 3, 0.25, 0.16);
+	save_but_constraints.fill = GridBagConstraints.BOTH;
+	save_but = swing.JButton("Save...");
+	layout.setConstraints(save_but, save_but_constraints);
+	frame.add(save_but);
 
 	# show window
 	frame.setVisible(True)
