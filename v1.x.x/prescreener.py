@@ -185,11 +185,18 @@ def perform_cropping(imp, info, output_folder, default_path):
 	while crop_roi is None:
 		WaitForUserDialog("Select XY region to crop...").show();
 		crop_roi = imp2.getRoi();
+	if crop_roi.getType():
+		info.set_xy_crop_rect(str([(x,y) for x, y in zip(crop_roi.getPolygon().xpoints, crop_roi.getPolygon().ypoints)]));
 	info.set_xy_crop_rect(crop_roi.getBounds().toString());
 	imp2.close();
 	zcrop_imp.show();
 	zcrop_imp.setRoi(crop_roi);
 	IJ.run("Crop", "");
+	if crop_roi.getType():
+		IJ.run(zcrop_imp, "Make Inverse", "");
+		inv_roi = zcrop_imp.getRoi();
+		IJ.run(zcrop_imp, "Set...", "value=0 stack");
+		IJ.run(zcrop_imp, "Make Inverse", "");
 	return imp, zcrop_imp, info, info.get_input_file_path();
 		
 def main():
