@@ -8,16 +8,20 @@ class PrescreenInfo(object):
 	_persist_folder = "IJ_marksl1_analysis";
 	def __init__(self, 
 					input_file_path=None,
+					metadata_file_path=None,
 					z_crop_frames=None, 
 					xy_crop_rect=None, 
-					vessel_type=None,
+					vessel_type='xISV',
 					ch1_label=None,
 					ch2_label=None, 
 					xy_pixel_size_um=None,
 					z_plane_spacing_um=None, 
-					embryo_id=None):
+					embryo_id=None, 
+					experiment_id=None, 
+					mosaic_labeled_ch=2):
 		"""constructor"""
 		self.input_file_path = input_file_path;
+		self.metadata_file_path = metadata_file_path;
 		self.z_crop_frames = z_crop_frames;
 		self.xy_crop_rect = xy_crop_rect;
 		self.vessel_type = vessel_type;
@@ -26,14 +30,22 @@ class PrescreenInfo(object):
 		self.xy_pixel_size_um = xy_pixel_size_um;
 		self.z_plane_spacing_um = z_plane_spacing_um;
 		self.embryo_id = embryo_id;
+		self.experiment_id = experiment_id;
+		self.mosaic_labeled_ch = mosaic_labeled_ch;
 		self.__prescreeninfo__ = True;
 
 	# Setters
 	def set_input_file_path(self, input_file_path):
-		if os.isfile(input_file_path):
+		if os.path.isfile(input_file_path):
 			self.input_file_path = input_file_path;
 		else:
 			raise IOError("File " + input_file_path + " not found!");
+
+	def set_metadata_file_path(self, metadata_file_path):
+		if os.path.isfile(metadata_file_path):
+			self.metadata_file_path = metadata_file_path;
+		else:
+			raise IOError("File " + metadata_file_path + " not found!");
 
 	def set_z_crop_frames(self, z_crop_frames):
 		if len(z_crop_frames) == 2:
@@ -77,9 +89,18 @@ class PrescreenInfo(object):
 	def set_embryo_id(self, embryo_id):
 		self.embryo_id = embryo_id;
 
+	def set_experiment_id(self, experiment_id):
+		self.experiment_id = experiment_id;
+
+	def set_mosaic_labeled_ch(self, mosaic_labeled_ch):
+		self.mosaic_labeled_ch = mosaic_labeled_ch;
+
 	# Getters
 	def get_input_file_path(self):
 		return self.input_file_path;
+
+	def get_metadata_file_path(self):
+		return self.metadata_file_path;
 
 	def get_z_crop_frames(self):
 		return self.z_crop_frames;
@@ -103,7 +124,17 @@ class PrescreenInfo(object):
 		return self.z_plane_spacing_um;
 
 	def get_embryo_id(self):
-		return embryo_id;
+		ret = self.embryo_id if self.embryo_id else "undefined_embryo";
+		return ret;
+
+	def get_experiment_id(self):
+		return self.experiment_id;
+
+	def get_vessel_types(self):
+		return list(PrescreenInfo._vessel_types);
+
+	def get_mosaic_labeled_ch(self):
+		return self.mosaic_labeled_ch;
 
 	# persistence functions
 	def save_info_to_json(self, file_path):
@@ -127,6 +158,10 @@ class PrescreenInfo(object):
 				self.set_ch2_label(dct["ch2_label"]);
 				self.set_xy_pixel_size_um(dct["xy_pixel_size_um"]);
 				self.set_z_plane_spacing_um(dct["z_plane_spacing_um"]);
+				self.set_embryo_id(dct["embryo_id"]);
+				self.set_experiment_id(dct["experiment_id"]);
+				self.set_metadata_file_path(dct["metadata_file_path"]);
+				self.set_mosaic_labeled_ch(dct["mosaic_labeled_ch"]);
 			else:
 				raise ValueError("JSON file doesn't translate to prescreeninfo format")
 		except IOError:
