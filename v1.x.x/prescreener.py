@@ -152,24 +152,38 @@ def save_etc(imp, info, output_folder):
 		return 1;
 	return 0;
 
-def perform_cropping(imp, info, output_folder, default_path):
-	if imp is None:
+def get_image(info, default_path, used_files):
+	"""handle getting image from file"""
+	check_for_file_overlap_OK = False;
+	while not check_for_file_overlap_OK:
 		info.set_input_file_path(file_location_chooser(default_path));
-		imps = bf.openImagePlus(info.get_input_file_path());
-		imp = imps[0];
-	
-		info.set_metadata_file_path(os.path.splitext(info.get_input_file_path())[0] + ".txt");
-		metadata = import_iq3_metadata(info.get_metadata_file_path());
-		IJ.run(imp, "Properties...", "channels=" + str(int(metadata['n_channels'])) + 
-										" slices=" + str(int(metadata['z_pixels'])) + 
-										" frames=1 unit=" + str(metadata['x_unit']) + 
-										" pixel_width=" + str(metadata['x_physical_size']) + 
-										" pixel_height=" + str(metadata['y_physical_size']) + 
-										" voxel_depth=" + str(metadata['z_extent']/metadata['z_pixels']));
-		info.set_xy_pixel_size_um(metadata['x_physical_size']);
-		info.set_z_plane_spacing_um(metadata['z_extent']/metadata['z_pixels']);
-		info = parse_info_from_filename(info);
+		if info.get_input_file_path() in used_files:
+			dlg = GenericDialog("Image already used...");
+			dlg.addMessage("This image has already been used in this analysis run.  \n " + 
+					"Continue with this image, or choose a new one?");
+			dlg.setOKLabel("Continue");
+			dlg.setCancelLabel("Choose again...");
+			dlg.showDialog();
+			check_for_file_overlap_OK = False if dlg.wasCanceled() else True;
+		else:
+			check_for_file_overlap_OK = True;
+	imps = bf.openImagePlus(info.get_input_file_path());
+	imp = imps[0];
 
+	info.set_metadata_file_path(os.path.splitext(info.get_input_file_path())[0] + ".txt");
+	metadata = import_iq3_metadata(info.get_metadata_file_path());
+	IJ.run(imp, "Properties...", "channels=" + str(int(metadata['n_channels'])) + 
+									" slices=" + str(int(metadata['z_pixels'])) + 
+									" frames=1 unit=" + str(metadata['x_unit']) + 
+									" pixel_width=" + str(metadata['x_physical_size']) + 
+									" pixel_height=" + str(metadata['y_physical_size']) + 
+									" voxel_depth=" + str(metadata['z_extent']/metadata['z_pixels']));
+	info.set_xy_pixel_size_um(metadata['x_physical_size']);
+	info.set_z_plane_spacing_um(metadata['z_extent']/metadata['z_pixels']);
+	info = parse_info_from_filename(info);
+	return imp, info;
+
+def perform_cropping(imp, info, output_folder, default_path):
 	imp.show();
 	imp.setC(info.get_mosaic_labeled_ch());
 	IJ.run("Enhance Contrast", "saturated=0.35");
@@ -203,12 +217,16 @@ def main():
 	info = PrescreenInfo();
 	default_path = "D:\\data\\Marcksl1 cell shape analysis\\zstacks"
 	output_folder = output_folder_chooser(default_path);
+	used_files = [];
 	answer = 1;
 	imp = None;
 	while answer > 0:
 		answer = 0;
+		if imp is None:
+			imp, info = get_image(info, default_path, used_files);
 		imp, zcrop_imp, info, default_path = perform_cropping(imp, info, output_folder, default_path);
 		answer = save_etc(zcrop_imp, info, output_folder);
+		used_files.append(info.get_input_file_path());
 		if answer == 2:
 			imp = None;
 		if zcrop_imp is not None:
