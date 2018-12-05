@@ -8,6 +8,7 @@ class PrescreenInfo(object):
 	_persist_folder = "IJ_marksl1_analysis";
 	def __init__(self, 
 					input_file_path=None,
+					input_file_series=0,
 					metadata_file_path=None,
 					z_crop_frames=None, 
 					xy_crop_rect=None, 
@@ -21,6 +22,7 @@ class PrescreenInfo(object):
 					mosaic_labeled_ch=2):
 		"""constructor"""
 		self.input_file_path = input_file_path;
+		self.input_file_series = input_file_series;
 		self.metadata_file_path = metadata_file_path;
 		self.z_crop_frames = z_crop_frames;
 		self.xy_crop_rect = xy_crop_rect;
@@ -35,6 +37,10 @@ class PrescreenInfo(object):
 		self.__prescreeninfo__ = True;
 
 	# Setters
+
+	def set_input_file_series(self, input_file_series):
+		self.input_file_series = input_file_series;
+
 	def set_input_file_path(self, input_file_path):
 		if os.path.isfile(input_file_path):
 			self.input_file_path = input_file_path;
@@ -99,6 +105,9 @@ class PrescreenInfo(object):
 	def get_input_file_path(self):
 		return self.input_file_path;
 
+	def get_input_file_series(self):
+		return self.input_file_series;
+
 	def get_metadata_file_path(self):
 		return self.metadata_file_path;
 
@@ -151,6 +160,7 @@ class PrescreenInfo(object):
 			dct = json.loads(f.read());
 			if "__prescreeninfo__" in dct:
 				self.set_input_file_path(dct["input_file_path"]);
+				self.set_input_file_series(dct["input_file_series"]);
 				self.set_z_crop_frames(dct["z_crop_frames"]);
 				self.set_xy_crop_rect(dct["xy_crop_rect"]);
 				self.set_vessel_type(dct["vessel_type"]);
