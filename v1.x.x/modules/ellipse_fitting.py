@@ -33,10 +33,10 @@ def ellipse_axis_length(a):
 def fit_ellipse(coords):
 	"""find a best fit ellipse (least squares sense) from a list of co-ordinates"""
 	# based on http://nicky.vanforeest.com/misc/fitEllipse/fitEllipse.html
-	xs = [float(x) for (x, y) in pts];
+	xs = [float(x) for (x, y) in coords];
 	xmean = sum(xs)/len(xs);
 	xs = [x - xmean for x in xs];
-	ys = [float(y) for (x, y) in pts];
+	ys = [float(y) for (x, y) in coords];
 	ymean = sum(ys)/len(ys);
 	ys = [y - ymean for y in ys];
 
@@ -81,6 +81,5 @@ def generate_ellipse_roi(centre, angle, axes_l):
 	x1 = xc - majAxL * math.cos(angle); x2 = xc + majAxL * math.cos(angle);
 	y1 = yc - majAxL * math.sin(angle); y2 = yc + majAxL * math.sin(angle);
 	aspectRatio = float(minAxL)/float(majAxL);
-	print(aspectRatio);
 	roi = EllipseRoi(x1, y1, x2, y2, aspectRatio);
 	return roi;
