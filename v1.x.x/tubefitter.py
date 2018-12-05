@@ -5,7 +5,7 @@ import math
 
 from ij import IJ, ImageStack, ImagePlus
 from ij.gui import EllipseRoi, WaitForUserDialog
-from ij.plugin import ChannelSplitter, Slicer
+from ij.plugin import ChannelSplitter, Slicer, HyperStackConverter
 from ij.process import StackProcessor, AutoThresholder, StackStatistics
 from ij import WindowManager as WM
 from ij import ImageListener
@@ -18,12 +18,15 @@ class UpdateRoiImageListener(ImageListener):
 		print("UpdateRoiImageListener started");
 
 	def imageUpdated(self, imp):
-		slc = imp.getZ();
+		if imp.getNSlices() > imp.getNFrames():
+			slc = imp.getZ();
+		else:
+			slc = imp.getT();
 		print(slc);
 		self.last_slice = slc;
 		if slc < len(self.roi_list):
 			imp.setRoi(self.roi_list[slc - 1]);
-
+		
 	def imageOpened(self, imp):
 		print("UpdateRoiImageListener: image opened");
 			
@@ -114,6 +117,7 @@ def generate_ellipse_roi(centre, angle, axes_l):
 # split channels and get EC-label channel (GFP, ch1 - confirm this on a case-wise basis from acq metadata...)
 channels  = ChannelSplitter().split(imp);
 egfp_imp = channels[0];
+mch_imp = channels[1];
 
 # (crudely) ROTATE so that long axis is z axis...
 cal = imp.getCalibration();
@@ -125,7 +129,8 @@ z_extent = cal.getZ(egfp_imp.getNSlices());
 #								" start=" + orientation_str + " rotate avoid");
 rot_imp = Slicer().reslice(egfp_imp);
 rot_imp.show();
-disp_title = rot_imp.getTitle();
+disp_imp_ch1 = rot_imp.clone();
+disp_imp_ch2 = Slicer().reslice(mch_imp);
 
 # Apply 3d MEDIAN FILTER to denoise and emphasise vessel-associated voxels
 filter_radius = 3.0;
@@ -149,9 +154,10 @@ IJ.run(fit_basis_imp, "Convert to Mask", "method=Default background=Dark list");
 # say the non-zero points then make up basis for fitting to be performed per http://nicky.vanforeest.com/misc/fitEllipse/fitEllipse.html
 rois = [];
 #WaitForUserDialog("Move reslice image to foreground...").show();
+roi_stack = IJ.createImage("rois", fit_basis_imp.getWidth(), fit_basis_imp.getHeight(), fit_basis_imp.getNSlices(), 16);
 for zidx in range(fit_basis_imp.getNSlices()):
 #zidx = 225;
-	fit_basis_imp.setZ(zidx);
+	fit_basis_imp.setZ(zidx+1);
 	
 	IJ.run(fit_basis_imp, "Outline", "stack");
 	IJ.run(fit_basis_imp, "Create Selection", "");
@@ -159,17 +165,28 @@ for zidx in range(fit_basis_imp.getNSlices()):
 	roi = fit_basis_imp.getRoi();
 	pts = [(pt.x, pt.y) for pt in roi.getContainedPoints()]
 	centre, angle, axl = fit_ellipse(pts);
-	print("Slice " + str(zidx) + 
+	print("Slice " + str(zidx+1) + 
 		", centre = " + str(centre) + 
 		", angle (deg) = " + str(angle * 180 / math.pi) + 
 		", axes = " + str(axl));
-	rot_imp.setZ(zidx);
+	rot_imp.setZ(zidx+1);
 	ellipse_roi = generate_ellipse_roi(centre, angle, axl);
-	rot_imp.setRoi(ellipse_roi);
+	#rot_imp.setRoi(ellipse_roi);
 	rois.append(ellipse_roi);
-disp_imp = WM.getImage(disp_title);
-disp_window = WM.getWindow(disp_title);
-WM.setCurrentWindow(disp_window);
-disp_imp.addImageListener(UpdateRoiImageListener(rois));
-#pts = [(x, y) for x, y in zip(roi.getContainedPoints().xpoints, roi.getContainedPoints().ypoints)];
-#print(pts);
+	roi_stack.setZ(zidx+1);
+	roi_stack.setRoi(ellipse_roi);
+	IJ.run(roi_stack, "Draw", "slice");
+	
+rot_imp.changes = False;
+rot_imp.close();
+disp_imp_ch2.show()
+disp_imp_ch1.show();
+roi_stack.show();
+IJ.run("Merge Channels...", "c1=[" + disp_imp_ch2.getTitle() + 
+								"] c2=[" + disp_imp_ch1.getTitle() + 
+								"] c7=[" + roi_stack.getTitle() + "] create keep");
+								
+#disp_imp_ch1.addImageListener(UpdateRoiImageListener(rois));
+
+
+#hsimp.addImageListener(UpdateRoiImageListener(rois));
