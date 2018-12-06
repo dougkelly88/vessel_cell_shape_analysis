@@ -26,9 +26,9 @@ def ellipse_axis_length(a):
 	up = 2*(a*f*f+c*d*d+g*b*b-2*b*d*f-a*c*g)
 	down1=(b*b-a*c)*( (c-a)*math.sqrt(1+4*b*b/((a-c)*(a-c)))-(c+a))
 	down2=(b*b-a*c)*( (a-c)*math.sqrt(1+4*b*b/((a-c)*(a-c)))-(c+a))
-	res1=math.sqrt(up/down1)
-	res2=math.sqrt(up/down2)
-	return (res1, res2)
+	res1=math.sqrt(abs(up/down1))
+	res2=math.sqrt(abs(up/down2))
+	return tuple(sorted([res1, res2]));
 
 def fit_ellipse(coords):
 	"""find a best fit ellipse (least squares sense) from a list of co-ordinates"""
@@ -77,7 +77,7 @@ def fit_ellipse(coords):
 def generate_ellipse_roi(centre, angle, axes_l):
 	"""translate the outputs of ellipse fitting to an ellipse ROI"""
 	xc = centre[0]; yc = centre[1];
-	majAxL = axes_l[0]; minAxL = axes_l[1];
+	majAxL = axes_l[1]; minAxL = axes_l[0];
 	x1 = xc - majAxL * math.cos(angle); x2 = xc + majAxL * math.cos(angle);
 	y1 = yc - majAxL * math.sin(angle); y2 = yc + majAxL * math.sin(angle);
 	aspectRatio = float(minAxL)/float(majAxL);
