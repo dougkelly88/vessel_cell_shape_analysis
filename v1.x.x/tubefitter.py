@@ -1,4 +1,3 @@
-# @ImagePlus imp
 # use D:\data\Marcksl1 cell shape analysis\e27 ISV1.tif for testing,,,
 import math, sys, os
 
@@ -7,6 +6,7 @@ from ij.gui import EllipseRoi, WaitForUserDialog
 from ij.plugin import ChannelSplitter, Slicer, HyperStackConverter
 from ij.process import StackProcessor, AutoThresholder, StackStatistics, FloatProcessor
 from ij import WindowManager as WM
+from loci.plugins import BF as bf
 
 release = False;
 
@@ -22,12 +22,13 @@ sys.path.insert(0, os.path.join(script_path, 'modules'));
 sys.path.insert(0, os.path.join(script_path, 'classes'));
 
 from UpdateRoiImageListener import UpdateRoiImageListener
+from PrescreenInfo import PrescreenInfo
 import file_io as io
 import ellipse_fitting
 
 def convex_hull_pts(pts):
 	"""Return points describing effective convex hull from non-contiguous outline points"""
-	print(pts);
+	#print(pts);
 	clean_pts = [];
 	temp_pts = [];
 	ys = [y for (x,y) in pts]
@@ -36,15 +37,25 @@ def convex_hull_pts(pts):
 	    temp_pts.append((xs[0], yy));
 	    if len(xs)>1:
 	        temp_pts.append((xs[-1], yy));
-	print(temp_pts)
+	#print(temp_pts)
 	xs = [x for (x,y) in temp_pts];
 	for xx in set(xs):
 	    ys = sorted([y for (x,y) in temp_pts if x==xx]);
 	    clean_pts.append((xx, ys[0]));
 	    if len(xs)>1:
 	        clean_pts.append((xx, ys[-1]));
-	print(clean_pts);
+	#print(clean_pts);
 	return clean_pts;
+
+im_test_path = "D:\\data\\Marcksl1 cell shape analysis\\e27 ISV1.tif";
+metadata_test_path = "D:\\data\Marcksl1 cell shape analysis\\Cropped\\2018-12-05 16-06-29 output\\Cropped UAS-marcksl1b-delED e27 xISV 1.json";
+info = PrescreenInfo();
+info.load_info_from_json(metadata_test_path);
+z_xy_ratio = abs(info.get_z_plane_spacing_um()) / info.get_xy_pixel_size_um();
+print(z_xy_ratio);
+bfimp = bf.openImagePlus(im_test_path);
+imp = bfimp[0];
+imp.show();
 
 # split channels and get EC-label channel (GFP, ch1 - confirm this on a case-wise basis from acq metadata...)
 channels  = ChannelSplitter().split(imp);
@@ -60,14 +71,17 @@ z_extent = cal.getZ(egfp_imp.getNSlices());
 #IJ.run(ml1_imp, "Reslice [/]...", "output=" + str(cal.getX(1.0)) + 
 #								" start=" + orientation_str + " rotate avoid");
 rot_imp = Slicer().reslice(egfp_imp);
-rot_imp.show();
+#rot_imp.show();
 disp_imp_ch1 = rot_imp.clone();
+
 disp_imp_ch2 = Slicer().reslice(mch_imp);
 
 # Apply 3d MEDIAN FILTER to denoise and emphasise vessel-associated voxels
 filter_radius = 3.0;
-IJ.run(rot_imp, "Median 3D...", "x=" + str(filter_radius) + " y=" + str(filter_radius) + " z=" + str(filter_radius));
+IJ.run(rot_imp, "Median 3D...", "x=" + str(filter_radius) + " y=" + str(math.ceil(filter_radius / z_xy_ratio)) + " z=" + str(filter_radius));
 #IJ.run(rot_imp, "Median 3D...", "x=5 y=5 z=" + str(filter_radius));
+
+rot_imp.show();
 
 # Apply automatic THRESHOLD to differentiate cells from background
 # get threshold value from stack histogram using otsu
@@ -86,8 +100,9 @@ IJ.run(fit_basis_imp, "Fill Holes", "stack");
 # plane-wise, use binary-outline
 # say the non-zero points then make up basis for fitting to be performed per http://nicky.vanforeest.com/misc/fitEllipse/fitEllipse.html
 rois = [];
-roi_stack = IJ.createImage("rois", fit_basis_imp.getWidth(), fit_basis_imp.getHeight(), fit_basis_imp.getNSlices(), 16);
-pts_stack = ImageStack(fit_basis_imp.getWidth(), fit_basis_imp.getHeight());
+roi_stack = IJ.createImage("rois", rot_imp.getWidth(), int(round(rot_imp.getHeight() * z_xy_ratio)), rot_imp.getNSlices(), 16);
+roi_stack = IJ.createImage("rois", rot_imp.getWidth(), rot_imp.getHeight(), rot_imp.getNSlices(), 16);
+#pts_stack = ImageStack(fit_basis_imp.getWidth(), fit_basis_imp.getHeight());
 for zidx in range(fit_basis_imp.getNSlices()):
 	fit_basis_imp.setZ(zidx+1);
 	IJ.run(fit_basis_imp, "Outline", "slice");
@@ -96,13 +111,13 @@ for zidx in range(fit_basis_imp.getNSlices()):
 	fit_basis_imp.killRoi();
 	pts = [(pt.x, pt.y) for pt in roi.getContainedPoints()];
 	clean_pts = convex_hull_pts(pts);
-	#WaitForUserDialog("clean pts").show();
+	#clean_pts = [(x, z_xy_ratio * y) for (x, y) in clean_pts];
 	# make a stack of clean points...
-	ip = FloatProcessor(fit_basis_imp.getWidth(), fit_basis_imp.getHeight())
-	pix = ip.getPixels();
-	for pt in clean_pts:
-		pix[int(pt[1]) * fit_basis_imp.getWidth() + int(pt[0])] = 128;
-	pts_stack.addSlice(ip);
+	#ip = FloatProcessor(fit_basis_imp.getWidth(), fit_basis_imp.getHeight())
+	#pix = ip.getPixels();
+	#for pt in clean_pts:
+	#	pix[int(pt[1]) * fit_basis_imp.getWidth() + int(pt[0])] = 128;
+	#pts_stack.addSlice(ip);
 	centre, angle, axl = ellipse_fitting.fit_ellipse(clean_pts);
 	#print("Slice " + str(zidx+1) + 
 	#	", centre = " + str(centre) + 
@@ -115,19 +130,27 @@ for zidx in range(fit_basis_imp.getNSlices()):
 	roi_stack.setRoi(ellipse_roi);
 	IJ.run(roi_stack, "Draw", "slice");
 
-pts_stack_imp = ImagePlus("Cleaned points", pts_stack);
-pts_stack_imp.show();
-WaitForUserDialog("Clean pts").show();
+#pts_stack_imp = ImagePlus("Cleaned points", pts_stack);
+#pts_stack_imp.show();
+#WaitForUserDialog("Clean pts").show();
 rot_imp.changes = False;
 rot_imp.close();
 disp_imp_ch2.show()
 disp_imp_ch1.show();
 roi_stack.show();
+#IJ.run(disp_imp_ch1, "Size...", "width=" + str(rot_imp.getWidth()) + 
+#								" height=" + str(int(round(rot_imp.getHeight() * z_xy_ratio))) + 
+#								" depth=" + str(rot_imp.getNSlices()) + 
+#								" average interpolation=Bilinear");
+#IJ.run(disp_imp_ch2, "Size...", "width=" + str(rot_imp.getWidth()) + 
+#								" height=" + str(int(round(rot_imp.getHeight() * z_xy_ratio))) + 
+#								" depth=" + str(rot_imp.getNSlices()) + 
+#								" average interpolation=Bilinear");
 IJ.run("Merge Channels...", "c1=[" + disp_imp_ch2.getTitle() + 
 								"] c2=[" + disp_imp_ch1.getTitle() + 
 								"] c7=[" + roi_stack.getTitle() + "] create keep");
 								
-#disp_imp_ch1.addImageListener(UpdateRoiImageListener(rois));
+disp_imp_ch1.addImageListener(UpdateRoiImageListener(rois));
 
 
 #hsimp.addImageListener(UpdateRoiImageListener(rois));
