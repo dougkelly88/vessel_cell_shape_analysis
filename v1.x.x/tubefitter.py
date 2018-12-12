@@ -68,6 +68,42 @@ def threshold_and_binarise(imp, z_xy_ratio):
 	IJ.run(fit_basis_imp, "Fill Holes", "stack");
 	return fit_basis_imp;
 
+def combine_two_channel_segments(imp1, imp2, binary_imp1, binary_imp2):
+	"""Use both channels to segment the vessel..."""
+	# two choices - 
+	# EITHER: combine median-filtered channels BEFORE segmentation: this means that correlation between 
+	# planes is maintained thanks to 3d segmentation
+	# OR: make choice about which channel to use (or whether to combine - how?) AFTER segmentation - potentially easier, so start with this
+	stack = ImageStack(imp1.getWidth(), imp1.getHeight());
+	for zidx in range(1, imp1.getNSlices()+1):
+		WaitForUserDialog("about to combine channels for slice " + str(zidx)).show(); 
+		print("zidx = " + str(zidx));
+		ch1_snr = calculate_snr(imp1, binary_imp1, zidx);
+		print("Ch1 snr = " + str(ch1_snr));
+		ch2_snr = calculate_snr(imp2, binary_imp2, zidx);
+		print("Ch2 snr = " + str(ch2_snr));
+		if (0.75 * ch1_snr) > ch2_snr:
+			binary_imp1.setZ(zidx);
+			ip = binary_imp1.getProcessor();
+		else:
+			print("USING MCH CHANNEL!");
+			binary_imp2.setZ(zidx);
+			ip = binary_imp2.getProcessor();
+		stack.addSlice(ip);
+	return ImagePlus("Combined thresholded channels", stack);
+
+def calculate_snr(signal_imp, thresholded_imp, zidx):
+	"""get the snr, calculated as the average signal in the thresholded region vs the average signal outwith the thresholded region, for a given slice"""
+	signal_imp.setZ(zidx);
+	thresholded_imp.setZ(zidx);
+	IJ.run(thresholded_imp, "Create Selection", "");
+	roi = thresholded_imp.getRoi();
+	signal_imp.setRoi(roi);
+	signal = signal_imp.getStatistics().mean;
+	IJ.run(signal_imp, "Make Inverse", "");
+	noise = signal_imp.getStatistics().mean;
+	return float(signal)/noise;
+
 def normalise_to_fill_range(imp, max_val=255):
 	"""Return an imp with minimum=0 and maximum=max_val"""
 	stats = StackStatistics(imp);
