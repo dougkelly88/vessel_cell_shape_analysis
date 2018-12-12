@@ -165,7 +165,16 @@ width = rot_imp.getWidth();
 height = int(round(rot_imp.getHeight() * z_xy_ratio));
 
 # Apply 3d MEDIAN FILTER to denoise and emphasise vessel-associated voxels
-fit_basis_imp = threshold_and_binarise(rot_imp, z_xy_ratio);
+fit_basis_imp1 = threshold_and_binarise(rot_imp, z_xy_ratio);
+fit_basis_imp2 = threshold_and_binarise(rot_imp_2, z_xy_ratio);
+fit_basis_imp = combine_two_channel_segments(rot_imp, rot_imp_2, fit_basis_imp1, fit_basis_imp2);
+fit_basis_imp.show();
+WaitForUserDialog("pause to compare individual and combined segmentation...").show();
+fit_basis_imp1.changes=False;
+fit_basis_imp2.changes=False;
+fit_basis_imp1.close();
+fit_basis_imp2.close();
+
 
 # plane-wise, use binary-outline
 # say the non-zero points then make up basis for fitting to be performed per http://nicky.vanforeest.com/misc/fitEllipse/fitEllipse.html
