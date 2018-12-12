@@ -19,7 +19,7 @@ class UpdateRoiImageListener(ImageListener):
 			slc = imp.getZ();
 		else:
 			slc = imp.getT();
-		print(slc);
+		#print(slc);
 		self.last_slice = slc;
 		if slc <= len(self.roi_list):
 			imp.setRoi(self.roi_list[slc - 1]);

@@ -85,9 +85,7 @@ def generate_ellipse_roi(centre, angle, axes_l):
 	else:
 		aspectRatio = float(axes_l[0])/float(axes_l[1]);
 		angle = angle + math.pi/2;
-		print("angle = " + str(180*angle/math.pi));
 		x1 = xc - axes_l[1] * math.cos(angle); x2 = xc + axes_l[1] * math.cos(angle);
 		y1 = yc - axes_l[1] * math.sin(angle); y2 = yc + axes_l[1] * math.sin(angle);
-	print("Aspect ratio = " + str(aspectRatio));
 	roi = EllipseRoi(x1, y1, x2, y2, aspectRatio);
 	return roi;
