@@ -26,6 +26,27 @@ from PrescreenInfo import PrescreenInfo
 import file_io as io
 import ellipse_fitting
 
+def generate_smoothed_vessel_axis(centres, pixel_size_um=0.1625):
+	"""From a list of fitted vessel centres, generate the vessel path"""
+	smooth_parameter_um = 1.0;
+	out_centres = [];
+	smooth_planes = smooth_parameter_um/pixel_size_um;
+	# for each element, get elements +/- smooth_parameter_um/2 along the length of the line?
+	# or, since this will add additional weight to points that are massively out of line, just do +/- smooth_parameter_um/um_per_z_plane
+	#for idx, centre in enumerate(centres):
+	#	sub_centres = [c for c in centres if (abs(centres.index(c) - idx) <= round(smooth_planes/2))];
+	#	out_centres.append((sum([x for (x,y) in sub_centres])/len(sub_centres), sum([y for (x,y) in sub_centres])/len(sub_centres)));
+	# or, avoid looping twice:
+	xs = [x for (x,y) in centres];
+	ys = [y for (x,y) in centres];
+	for idx, centre in enumerate(centres):
+		high_idx = idx + int(round(smooth_planes/2));
+		high_idx = high_idx if high_idx < len(centres)-1 else len(centres)-2;
+		low_idx = idx - int(round(smooth_planes/2));
+		low_idx = low_idx if low_idx > 0 else 0;
+		out_centres.append((sum(xs[low_idx:high_idx+1])/(high_idx+1-low_idx), sum(ys[low_idx:high_idx+1])/(high_idx+1-low_idx)));
+	return out_centres;
+
 def threshold_and_binarise(imp, z_xy_ratio):
 	"""Return thresholded stack"""
 	filter_radius = 3.0;
@@ -114,6 +135,7 @@ fit_basis_imp = threshold_and_binarise(rot_imp, z_xy_ratio);
 # plane-wise, use binary-outline
 # say the non-zero points then make up basis for fitting to be performed per http://nicky.vanforeest.com/misc/fitEllipse/fitEllipse.html
 rois = [];
+centres = [];
 roi_stack = IJ.createImage("rois", width, height, depth, 16);
 #roi_stack = IJ.createImage("rois", rot_imp.getWidth(), rot_imp.getHeight(), rot_imp.getNSlices(), 16);
 pts_stack = ImageStack(width, height+1);
@@ -136,6 +158,7 @@ for zidx in range(fit_basis_imp.getNSlices()):
 		pix[int(pt[1]) * width + int(pt[0])] = 128;
 	pts_stack.addSlice(ip);
 	centre, angle, axl = ellipse_fitting.fit_ellipse(clean_pts);
+	centres.append(centre);
 	#print("Slice " + str(zidx+1) + 
 	#	", centre = " + str(centre) + 
 	#	", angle (deg) = " + str(angle * 180 / math.pi) + 
@@ -143,10 +166,19 @@ for zidx in range(fit_basis_imp.getNSlices()):
 	rot_imp.setZ(zidx+1);
 	ellipse_roi = ellipse_fitting.generate_ellipse_roi(centre, angle, axl);
 	rois.append(ellipse_roi);
+	#roi_stack.setZ(zidx+1);
+	#roi_stack.setRoi(ellipse_roi);
+	#IJ.run(roi_stack, "Draw", "slice");
+	#IJ.run(roi_stack, "Set...", "value=255 slice");
+IJ.run(imp, "Line Width...", "line=1");
+
+smooth_centres =  generate_smoothed_vessel_axis(centres, pixel_size_um=info.get_xy_pixel_size_um());
+for zidx in range(fit_basis_imp.getNSlices()):
+	centre = smooth_centres[zidx];
+	ellipse_roi = EllipseRoi(centre[0]-2, centre[1], centre[0]+2, centre[1], 1.0);
 	roi_stack.setZ(zidx+1);
 	roi_stack.setRoi(ellipse_roi);
-	IJ.run(roi_stack, "Draw", "slice");
-IJ.run(imp, "Line Width...", "line=1");
+	IJ.run(roi_stack, "Set...", "value=" + str(roi_stack.getProcessor().maxValue()) + " slice");
 
 pts_stack_imp = ImagePlus("Cleaned points", pts_stack);
 pts_stack_imp.show();
@@ -162,8 +194,15 @@ print("disp_imp_ch2_size:"  + str((disp_imp_ch1.getHeight(), disp_imp_ch1.getWid
 IJ.run("Merge Channels...", "c1=[" + disp_imp_ch2.getTitle() + 
 								"] c2=[" + disp_imp_ch1.getTitle() + 
 								"] c7=[" + roi_stack.getTitle() + "] create keep");
-								
-disp_imp_ch1.addImageListener(UpdateRoiImageListener(rois));
+
+WM.getImage("Composite").addImageListener(UpdateRoiImageListener(rois));
+IJ.run(roi_stack, "8-bit", "");
+
+disp_imp_ch1.changes=False;
+disp_imp_ch2.changes=False;
+imp.changes=False;
+roi_stack.changes=False;
+fit_basis_imp.changes=False;
 
 
 #hsimp.addImageListener(UpdateRoiImageListener(rois));
