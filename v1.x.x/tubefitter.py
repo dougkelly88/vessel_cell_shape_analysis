@@ -3,7 +3,7 @@ import math, sys, os
 
 from ij import IJ, ImageStack, ImagePlus
 from ij.gui import EllipseRoi, WaitForUserDialog
-from ij.plugin import ChannelSplitter, Slicer, HyperStackConverter, ImageCalculator
+from ij.plugin import ChannelSplitter, Slicer, HyperStackConverter, ImageCalculator, Duplicator
 from ij.process import StackProcessor, AutoThresholder, StackStatistics, FloatProcessor
 from ij import WindowManager as WM
 from loci.plugins import BF as bf
@@ -157,10 +157,9 @@ z_extent = cal.getZ(egfp_imp.getNSlices());
 #IJ.run(ml1_imp, "Reslice [/]...", "output=" + str(cal.getX(1.0)) + 
 #								" start=" + orientation_str + " rotate avoid");
 rot_imp = Slicer().reslice(egfp_imp);
-#rot_imp.show();
-disp_imp_ch1 = rot_imp.clone();
+disp_imp_ch1 = Duplicator().run(rot_imp);
 rot_imp_2 = Slicer().reslice(mch_imp);
-disp_imp_ch2 = rot_imp_2.clone();
+disp_imp_ch2 = Duplicator().run(rot_imp_2);
 depth = rot_imp.getNSlices() if rot_imp.getNSlices() > rot_imp.getNFrames() else rot_imp.getNFrames();
 width = rot_imp.getWidth();
 height = int(round(rot_imp.getHeight() * z_xy_ratio));
