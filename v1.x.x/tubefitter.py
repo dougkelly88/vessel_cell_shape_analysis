@@ -4,7 +4,7 @@ import math, sys, os
 from ij import IJ, ImageStack, ImagePlus
 from ij.gui import EllipseRoi, WaitForUserDialog
 from ij.plugin import ChannelSplitter, Slicer, HyperStackConverter, ImageCalculator, Duplicator
-from ij.process import StackProcessor, AutoThresholder, StackStatistics, FloatProcessor
+from ij.process import StackProcessor, AutoThresholder, StackStatistics, FloatProcessor, ImageProcessor
 from ij import WindowManager as WM
 from loci.plugins import BF as bf
 
@@ -50,22 +50,37 @@ def generate_smoothed_vessel_axis(centres, pixel_size_um=0.1625):
 def threshold_and_binarise(imp, z_xy_ratio):
 	"""Return thresholded stack"""
 	filter_radius = 3.0;
+	imp.show();
 	IJ.run(imp, "Median 3D...", "x=" + str(filter_radius) + " y=" + str(math.ceil(filter_radius / z_xy_ratio)) + " z=" + str(filter_radius));
 	IJ.run(imp, "8-bit", "");
-	rot_imp.show();
-
-	# Apply automatic THRESHOLD to differentiate cells from background
-	# get threshold value from stack histogram using otsu
-	histo = StackStatistics(imp).histogram;
-	#thresh_lev = AutoThresholder().getThreshold(AutoThresholder.Method.IJ_IsoData, histo);
-	thresh_lev = AutoThresholder().getThreshold(AutoThresholder.Method.Otsu, histo);
 	max_voxel_volume = int(float(imp.getHeight() * imp.getWidth() * imp.getNSlices())/100);
-	IJ.run(imp, "3D Simple Segmentation", "low_threshold=" + str(thresh_lev + 1) + 
-												" min_size=" + str(max_voxel_volume) + " max_size=-1");
+
+	# threshold slice-wise
+	stack = ImageStack(imp.getWidth(), imp.getHeight());
+	for zidx in range(1, imp.getNSlices()+1):
+		imp.setZ(zidx);
+		histo = imp.getStatistics().histogram;
+		thresh_lev = AutoThresholder().getThreshold(AutoThresholder.Method.Otsu, histo);
+		print("AutoThresholder threshold level = " + str(thresh_lev));
+		ip = imp.getProcessor();
+		#ip.setAutoThreshold("Otsu");
+		ip.setThreshold(thresh_lev+1, ip.maxValue(), ImageProcessor.NO_LUT_UPDATE);
+		print("image processor threshold level = " + str(ip.getMinThreshold()));
+		bp = ip.createMask();
+		stack.addSlice(bp);
+	bin_imp = ImagePlus("slicewise thresholded", stack);
+	bin_imp.show();
+	WaitForUserDialog("show slicewise thresholeded stack").show();
+		
+	IJ.run(bin_imp, "3D Simple Segmentation", "low_threshold=254 min_size=" + str(max_voxel_volume) + " max_size=-1");
 	fit_basis_imp = WM.getImage("Seg");
+	fit_basis_imp.setTitle("Seg " + imp.getTitle());
+	WM.getImage("Bin").setTitle("Bin " + imp.getTitle());
+	#WM.getImage("Bin").close();
 	IJ.setThreshold(fit_basis_imp, 1, 65535);
 	IJ.run(fit_basis_imp, "Convert to Mask", "method=Default background=Dark list");
 	IJ.run(fit_basis_imp, "Fill Holes", "stack");
+	#IJ.run(fit_basis_imp, "3D Fill Holes", "");
 	return fit_basis_imp;
 
 def combine_two_channel_segments(imp1, imp2, binary_imp1, binary_imp2):
@@ -76,7 +91,7 @@ def combine_two_channel_segments(imp1, imp2, binary_imp1, binary_imp2):
 	# OR: make choice about which channel to use (or whether to combine - how?) AFTER segmentation - potentially easier, so start with this
 	stack = ImageStack(imp1.getWidth(), imp1.getHeight());
 	for zidx in range(1, imp1.getNSlices()+1):
-		WaitForUserDialog("about to combine channels for slice " + str(zidx)).show(); 
+		#WaitForUserDialog("about to combine channels for slice " + str(zidx)).show(); 
 		print("zidx = " + str(zidx));
 		ch1_snr = calculate_snr(imp1, binary_imp1, zidx);
 		print("Ch1 snr = " + str(ch1_snr));
@@ -96,6 +111,11 @@ def calculate_snr(signal_imp, thresholded_imp, zidx):
 	"""get the snr, calculated as the average signal in the thresholded region vs the average signal outwith the thresholded region, for a given slice"""
 	signal_imp.setZ(zidx);
 	thresholded_imp.setZ(zidx);
+	stats = thresholded_imp.getStatistics();
+	if stats.max == 0:
+		return 0.0;
+	if stats.max == stats.mean:
+		return 0.0;
 	IJ.run(thresholded_imp, "Create Selection", "");
 	roi = thresholded_imp.getRoi();
 	signal_imp.setRoi(roi);
