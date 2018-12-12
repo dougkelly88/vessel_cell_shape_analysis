@@ -60,7 +60,7 @@ def threshold_and_binarise(imp, z_xy_ratio):
 	#thresh_lev = AutoThresholder().getThreshold(AutoThresholder.Method.IJ_IsoData, histo);
 	thresh_lev = AutoThresholder().getThreshold(AutoThresholder.Method.Otsu, histo);
 	max_voxel_volume = int(float(imp.getHeight() * imp.getWidth() * imp.getNSlices())/100);
-	IJ.run(rot_imp, "3D Simple Segmentation", "low_threshold=" + str(thresh_lev + 1) + 
+	IJ.run(imp, "3D Simple Segmentation", "low_threshold=" + str(thresh_lev + 1) + 
 												" min_size=" + str(max_voxel_volume) + " max_size=-1");
 	fit_basis_imp = WM.getImage("Seg");
 	IJ.setThreshold(fit_basis_imp, 1, 65535);
