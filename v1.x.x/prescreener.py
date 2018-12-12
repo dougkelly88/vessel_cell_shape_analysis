@@ -21,6 +21,8 @@ import file_io as io;
 	
 def z_crop(imp):
 	"""trim a z stack based on interactively-defined start and end points"""
+	IJ.setTool("zoom");
+	IJ.run("Brightness/Contrast...");
 	imp.setZ(1);
 	WaitForUserDialog("Choose first z plane and click OK...").show();
 	start_z = imp.getZ();
