@@ -8,6 +8,11 @@ from ij.process import StackProcessor, AutoThresholder, StackStatistics, FloatPr
 from ij import WindowManager as WM
 from loci.plugins import BF as bf
 
+im_test_path = "D:\\data\\Marcksl1 cell shape analysis\\e27 ISV1.tif";
+metadata_test_path = "D:\\data\Marcksl1 cell shape analysis\\Cropped\\2018-12-05 16-06-29 output\\Cropped UAS-marcksl1b-delED e27 xISV 1.json";
+im_test_path = "D:\\data\\Structural imaging\\Imaging protocol tests\\2018-09-14 vessel structure imaging\\vessel_structure_protocol3_20180914_174448\\Cropped vessels\\2018-12-12 16-38-31 output\\Cropped dextran-rhodamine kdrl-egfp vessel_structure etest_embryo aISV 1.tif";
+metadata_test_path = "D:\\data\\Structural imaging\\Imaging protocol tests\\2018-09-14 vessel structure imaging\\vessel_structure_protocol3_20180914_174448\\Cropped vessels\\2018-12-12 16-38-31 output\\Cropped dextran-rhodamine kdrl-egfp vessel_structure etest_embryo aISV 1.json";
+
 release = False;
 
 if not release:
@@ -28,7 +33,7 @@ import ellipse_fitting
 
 def generate_smoothed_vessel_axis(centres, pixel_size_um=0.1625):
 	"""From a list of fitted vessel centres, generate the vessel path"""
-	smooth_parameter_um = 1.0;
+	smooth_parameter_um = 5.0;
 	out_centres = [];
 	smooth_planes = smooth_parameter_um/pixel_size_um;
 	# for each element, get elements +/- smooth_parameter_um/2 along the length of the line?
@@ -49,6 +54,7 @@ def generate_smoothed_vessel_axis(centres, pixel_size_um=0.1625):
 
 def threshold_and_binarise(imp, z_xy_ratio):
 	"""Return thresholded stack"""
+	print("performing segmentation on channel: " + imp.getTitle());
 	filter_radius = 3.0;
 	IJ.run(imp, "Median 3D...", "x=" + str(filter_radius) + " y=" + str(math.ceil(filter_radius / z_xy_ratio)) + " z=" + str(filter_radius));
 	IJ.run(imp, "8-bit", "");
@@ -65,7 +71,8 @@ def threshold_and_binarise(imp, z_xy_ratio):
 	fit_basis_imp = WM.getImage("Seg");
 	IJ.setThreshold(fit_basis_imp, 1, 65535);
 	IJ.run(fit_basis_imp, "Convert to Mask", "method=Default background=Dark list");
-	IJ.run(fit_basis_imp, "Fill Holes", "stack");
+	#IJ.run(fit_basis_imp, "Fill Holes", "stack");
+	IJ.run("3D Fill Holes", "");
 	return fit_basis_imp;
 
 def combine_two_channel_segments(imp1, imp2, binary_imp1, binary_imp2):
@@ -132,8 +139,6 @@ def convex_hull_pts(pts):
 	#print(clean_pts);
 	return clean_pts;
 
-im_test_path = "D:\\data\\Marcksl1 cell shape analysis\\e27 ISV1.tif";
-metadata_test_path = "D:\\data\Marcksl1 cell shape analysis\\Cropped\\2018-12-05 16-06-29 output\\Cropped UAS-marcksl1b-delED e27 xISV 1.json";
 info = PrescreenInfo();
 info.load_info_from_json(metadata_test_path);
 z_xy_ratio = abs(info.get_z_plane_spacing_um()) / info.get_xy_pixel_size_um();
@@ -165,16 +170,8 @@ width = rot_imp.getWidth();
 height = int(round(rot_imp.getHeight() * z_xy_ratio));
 
 # Apply 3d MEDIAN FILTER to denoise and emphasise vessel-associated voxels
-fit_basis_imp1 = threshold_and_binarise(rot_imp, z_xy_ratio);
-fit_basis_imp2 = threshold_and_binarise(rot_imp_2, z_xy_ratio);
-fit_basis_imp = combine_two_channel_segments(rot_imp, rot_imp_2, fit_basis_imp1, fit_basis_imp2);
+fit_basis_imp = threshold_and_binarise(rot_imp, z_xy_ratio);
 fit_basis_imp.show();
-WaitForUserDialog("pause to compare individual and combined segmentation...").show();
-fit_basis_imp1.changes=False;
-fit_basis_imp2.changes=False;
-fit_basis_imp1.close();
-fit_basis_imp2.close();
-
 
 # plane-wise, use binary-outline
 # say the non-zero points then make up basis for fitting to be performed per http://nicky.vanforeest.com/misc/fitEllipse/fitEllipse.html
@@ -232,6 +229,7 @@ rot_imp.close();
 disp_imp_ch2.show()
 disp_imp_ch1.show();
 roi_stack.show();
+print("box height um = " + str(roi_stack.getNSlices() * info.get_xy_pixel_size_um()));
 IJ.run(disp_imp_ch1, "Size...", "width=" + str(width) + " height=" + str(height) + " depth=" + str(depth) + " average interpolation=Bilinear");
 IJ.run(disp_imp_ch2, "Size...", "width=" + str(width) + " height=" + str(height) + " depth=" + str(depth) + " average interpolation=Bilinear");
 print("disp_imp_ch2_size:"  + str((disp_imp_ch1.getHeight(), disp_imp_ch1.getWidth, disp_imp_ch1.getNSlices())))
