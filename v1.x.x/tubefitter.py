@@ -2,16 +2,19 @@
 import math, sys, os
 
 from ij import IJ, ImageStack, ImagePlus
-from ij.gui import EllipseRoi, WaitForUserDialog
-from ij.plugin import ChannelSplitter, Slicer, HyperStackConverter, ImageCalculator, Duplicator
+from ij.gui import EllipseRoi, WaitForUserDialog, Roi
+from ij.plugin import ChannelSplitter, Slicer, HyperStackConverter, ImageCalculator, Duplicator, SubstackMaker
 from ij.process import StackProcessor, AutoThresholder, StackStatistics, FloatProcessor
 from ij import WindowManager as WM
 from loci.plugins import BF as bf
 
-im_test_path = "D:\\data\\Marcksl1 cell shape analysis\\e27 ISV1.tif";
-metadata_test_path = "D:\\data\Marcksl1 cell shape analysis\\Cropped\\2018-12-05 16-06-29 output\\Cropped UAS-marcksl1b-delED e27 xISV 1.json";
-im_test_path = "D:\\data\\Structural imaging\\Imaging protocol tests\\2018-09-14 vessel structure imaging\\vessel_structure_protocol3_20180914_174448\\Cropped vessels\\2018-12-12 16-38-31 output\\Cropped dextran-rhodamine kdrl-egfp vessel_structure etest_embryo aISV 1.tif";
-metadata_test_path = "D:\\data\\Structural imaging\\Imaging protocol tests\\2018-09-14 vessel structure imaging\\vessel_structure_protocol3_20180914_174448\\Cropped vessels\\2018-12-12 16-38-31 output\\Cropped dextran-rhodamine kdrl-egfp vessel_structure etest_embryo aISV 1.json";
+#im_test_path = "D:\\data\\Marcksl1 cell shape analysis\\e27 ISV1.tif";
+#metadata_test_path = "D:\\data\Marcksl1 cell shape analysis\\Cropped\\2018-12-05 16-06-29 output\\Cropped UAS-marcksl1b-delED e27 xISV 1.json";
+#im_test_path = "D:\\data\\Structural imaging\\Imaging protocol tests\\2018-09-14 vessel structure imaging\\vessel_structure_protocol3_20180914_174448\\Cropped vessels\\2018-12-12 16-38-31 output\\Cropped dextran-rhodamine kdrl-egfp vessel_structure etest_embryo aISV 1.tif";
+#metadata_test_path = "D:\\data\\Structural imaging\\Imaging protocol tests\\2018-09-14 vessel structure imaging\\vessel_structure_protocol3_20180914_174448\\Cropped vessels\\2018-12-12 16-38-31 output\\Cropped dextran-rhodamine kdrl-egfp vessel_structure etest_embryo aISV 1.json";
+im_test_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\AB inj marcksl1b-EGFP, rhodamine-dextran uangiography\\Cropped\\2019-01-10 16-03-47 output\\Cropped Dextran-Rhodamine Marcksl1b-EGFP Lumen staining test eE1 xISV 1.tif";
+metadata_test_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\AB inj marcksl1b-EGFP, rhodamine-dextran uangiography\\Cropped\\2019-01-10 16-03-47 output\\Cropped Dextran-Rhodamine Marcksl1b-EGFP Lumen staining test eE1 xISV 1.json";
+
 
 release = False;
 
@@ -30,18 +33,14 @@ from UpdateRoiImageListener import UpdateRoiImageListener
 from PrescreenInfo import PrescreenInfo
 import file_io as io
 import ellipse_fitting
+import ui
 
 def generate_smoothed_vessel_axis(centres, pixel_size_um=0.1625):
 	"""From a list of fitted vessel centres, generate the vessel path"""
 	smooth_parameter_um = 5.0;
 	out_centres = [];
+	tangent_vectors = [];
 	smooth_planes = smooth_parameter_um/pixel_size_um;
-	# for each element, get elements +/- smooth_parameter_um/2 along the length of the line?
-	# or, since this will add additional weight to points that are massively out of line, just do +/- smooth_parameter_um/um_per_z_plane
-	#for idx, centre in enumerate(centres):
-	#	sub_centres = [c for c in centres if (abs(centres.index(c) - idx) <= round(smooth_planes/2))];
-	#	out_centres.append((sum([x for (x,y) in sub_centres])/len(sub_centres), sum([y for (x,y) in sub_centres])/len(sub_centres)));
-	# or, avoid looping twice:
 	xs = [x for (x,y) in centres];
 	ys = [y for (x,y) in centres];
 	for idx, centre in enumerate(centres):
@@ -50,7 +49,10 @@ def generate_smoothed_vessel_axis(centres, pixel_size_um=0.1625):
 		low_idx = idx - int(round(smooth_planes/2));
 		low_idx = low_idx if low_idx > 0 else 0;
 		out_centres.append((sum(xs[low_idx:high_idx+1])/(high_idx+1-low_idx), sum(ys[low_idx:high_idx+1])/(high_idx+1-low_idx)));
-	return out_centres;
+		if idx > 0:
+			tangent_vectors.append((out_centres[-1][0] - out_centres[-2][0], out_centres[-1][1] - out_centres[-2][1], 1));
+	tangent_vectors.insert(0, tangent_vectors[0]);
+	return out_centres, tangent_vectors;
 
 def threshold_and_binarise(imp, z_xy_ratio):
 	"""Return thresholded stack"""
@@ -58,7 +60,7 @@ def threshold_and_binarise(imp, z_xy_ratio):
 	filter_radius = 3.0;
 	IJ.run(imp, "Median 3D...", "x=" + str(filter_radius) + " y=" + str(math.ceil(filter_radius / z_xy_ratio)) + " z=" + str(filter_radius));
 	IJ.run(imp, "8-bit", "");
-	rot_imp.show();
+	imp.show();
 
 	# Apply automatic THRESHOLD to differentiate cells from background
 	# get threshold value from stack histogram using otsu
@@ -139,112 +141,128 @@ def convex_hull_pts(pts):
 	#print(clean_pts);
 	return clean_pts;
 
-info = PrescreenInfo();
-info.load_info_from_json(metadata_test_path);
-z_xy_ratio = abs(info.get_z_plane_spacing_um()) / info.get_xy_pixel_size_um();
-print(z_xy_ratio);
-bfimp = bf.openImagePlus(im_test_path);
-imp = bfimp[0];
-imp.show();
-IJ.run(imp, "Set Scale...", "distance=0 known=0 pixel=1 unit=pixel");
 
-# split channels and get EC-label channel (GFP, ch1 - confirm this on a case-wise basis from acq metadata...)
-channels  = ChannelSplitter().split(imp);
-egfp_imp = channels[0];
-mch_imp = channels[1];
+def main():
+	info = PrescreenInfo();
+	info.load_info_from_json(metadata_test_path);
+	z_xy_ratio = abs(info.get_z_plane_spacing_um()) / info.get_xy_pixel_size_um();
+	print(z_xy_ratio);
+	bfimp = bf.openImagePlus(im_test_path);
+	imp = bfimp[0];
+	imp.show();
+	cal = imp.getCalibration();
+	IJ.run(imp, "Set Scale...", "distance=0 known=0 pixel=1 unit=pixel");
+	seg_ch_idx, proj_ch_idx = ui.choose_segmentation_and_projection_channels(info);
 
-# (crudely) ROTATE so that long axis is z axis...
-cal = imp.getCalibration();
-x_extent = cal.getX(egfp_imp.getWidth());
-y_extent = cal.getY(egfp_imp.getHeight());
-z_extent = cal.getZ(egfp_imp.getNSlices());
-#orientation_str = "Top" if (y_extent > x_extent) else "Left";
-#IJ.run(ml1_imp, "Reslice [/]...", "output=" + str(cal.getX(1.0)) + 
-#								" start=" + orientation_str + " rotate avoid");
-rot_imp = Slicer().reslice(egfp_imp);
-disp_imp_ch1 = Duplicator().run(rot_imp);
-rot_imp_2 = Slicer().reslice(mch_imp);
-disp_imp_ch2 = Duplicator().run(rot_imp_2);
-depth = rot_imp.getNSlices() if rot_imp.getNSlices() > rot_imp.getNFrames() else rot_imp.getNFrames();
-width = rot_imp.getWidth();
-height = int(round(rot_imp.getHeight() * z_xy_ratio));
+	# split channels and get EC-label channel (TODO: sort channel according to metadata excitation wavelength)
+	
+	# TODO: bundle channel separation and rotation into a function and see if seg, proj can be closed after generating rotated imps?
+	channels  = ChannelSplitter().split(imp);
+	seg_imp = Duplicator().run(channels[seg_ch_idx]); # use Duplicator to decouple - can do smarter to save memory?
+	proj_imp = Duplicator().run(channels[proj_ch_idx]);
 
-# Apply 3d MEDIAN FILTER to denoise and emphasise vessel-associated voxels
-fit_basis_imp = threshold_and_binarise(rot_imp, z_xy_ratio);
-fit_basis_imp.show();
+	# (crudely) ROTATE so that long axis is z axis...
+	
+	rot_seg_imp = Slicer().reslice(seg_imp);
+	rot_seg_imp.setTitle("rot_seg_imp");
+	rot_proj_imp = Slicer().reslice(proj_imp);
+	rot_proj_imp.setTitle("rot_proj_imp");
+	egfp_mch_imps = [];
+	egfp_idx = 0 if "gfp" in info.ch1_label.lower() else 1;
+	mch_idx = int(not(egfp_idx)); # assume two channel...
+	for ch_idx in [egfp_idx, mch_idx]:
+		if ch_idx==seg_ch_idx:
+			egfp_mch_imps.append(Duplicator().run(rot_seg_imp));
+		elif ch_idx==proj_ch_idx:
+			egfp_mch_imps.append(Duplicator().run(rot_proj_imp));
+		else:
+			egfp_mch_imps.append(Slicer().reslice(Duplicator().run(channels[ch_idx])));
+	imp.changes=False;
+	imp.close();
 
-# plane-wise, use binary-outline
-# say the non-zero points then make up basis for fitting to be performed per http://nicky.vanforeest.com/misc/fitEllipse/fitEllipse.html
-rois = [];
-centres = [];
-roi_stack = IJ.createImage("rois", width, height, depth, 16);
-#roi_stack = IJ.createImage("rois", rot_imp.getWidth(), rot_imp.getHeight(), rot_imp.getNSlices(), 16);
-pts_stack = ImageStack(width, height+1);
-IJ.run(imp, "Line Width...", "line=3");
-for zidx in range(fit_basis_imp.getNSlices()):
-	fit_basis_imp.setZ(zidx+1);
-	IJ.run(fit_basis_imp, "Outline", "slice");
-	IJ.run(fit_basis_imp, "Create Selection", "");
-	roi = fit_basis_imp.getRoi();
-	fit_basis_imp.killRoi();
-	pts = [(pt.x, pt.y) for pt in roi.getContainedPoints()];
-	clean_pts = convex_hull_pts(pts);
-	clean_pts = [(x, z_xy_ratio * y) for (x, y) in clean_pts];
-	# make a stack of clean points...
-	ip = FloatProcessor(width, height+1)
-	pix = ip.getPixels();
-	for pt in clean_pts:
-		#print(pt);
-		#print(int(round(fit_basis_imp.getHeight() * z_xy_ratio)));
-		pix[int(pt[1]) * width + int(pt[0])] = 128;
-	pts_stack.addSlice(ip);
-	centre, angle, axl = ellipse_fitting.fit_ellipse(clean_pts);
-	centres.append(centre);
-	#print("Slice " + str(zidx+1) + 
-	#	", centre = " + str(centre) + 
-	#	", angle (deg) = " + str(angle * 180 / math.pi) + 
-	#	", axes = " + str(axl));
-	rot_imp.setZ(zidx+1);
-	ellipse_roi = ellipse_fitting.generate_ellipse_roi(centre, angle, axl);
-	rois.append(ellipse_roi);
-	#roi_stack.setZ(zidx+1);
-	#roi_stack.setRoi(ellipse_roi);
-	#IJ.run(roi_stack, "Draw", "slice");
-	#IJ.run(roi_stack, "Set...", "value=255 slice");
-IJ.run(imp, "Line Width...", "line=1");
+	depth = rot_seg_imp.getNSlices() if rot_seg_imp.getNSlices() > rot_seg_imp.getNFrames() else rot_seg_imp.getNFrames();
+	width = rot_seg_imp.getWidth();
+	height = int(round(rot_seg_imp.getHeight() * z_xy_ratio));
 
-smooth_centres =  generate_smoothed_vessel_axis(centres, pixel_size_um=info.get_xy_pixel_size_um());
-for zidx in range(fit_basis_imp.getNSlices()):
-	centre = smooth_centres[zidx];
-	ellipse_roi = EllipseRoi(centre[0]-2, centre[1], centre[0]+2, centre[1], 1.0);
-	roi_stack.setZ(zidx+1);
-	roi_stack.setRoi(ellipse_roi);
-	IJ.run(roi_stack, "Set...", "value=" + str(roi_stack.getProcessor().maxValue()) + " slice");
+	# Apply 3d MEDIAN FILTER to denoise and emphasise vessel-associated voxels
+	fit_basis_imp = threshold_and_binarise(rot_seg_imp, z_xy_ratio);
+	fit_basis_imp.setTitle("fit_basis_imp");
+	fit_basis_imp.show();
 
-pts_stack_imp = ImagePlus("Cleaned points", pts_stack);
-pts_stack_imp.show();
-#WaitForUserDialog("Clean pts").show();
-rot_imp.changes = False;
-rot_imp.close();
-disp_imp_ch2.show()
-disp_imp_ch1.show();
-roi_stack.show();
-print("box height um = " + str(roi_stack.getNSlices() * info.get_xy_pixel_size_um()));
-IJ.run(disp_imp_ch1, "Size...", "width=" + str(width) + " height=" + str(height) + " depth=" + str(depth) + " average interpolation=Bilinear");
-IJ.run(disp_imp_ch2, "Size...", "width=" + str(width) + " height=" + str(height) + " depth=" + str(depth) + " average interpolation=Bilinear");
-print("disp_imp_ch2_size:"  + str((disp_imp_ch1.getHeight(), disp_imp_ch1.getWidth, disp_imp_ch1.getNSlices())))
-IJ.run("Merge Channels...", "c1=[" + disp_imp_ch2.getTitle() + 
-								"] c2=[" + disp_imp_ch1.getTitle() + 
-								"] c7=[" + roi_stack.getTitle() + "] create keep");
+	# plane-wise, use binary-outline
+	# say the non-zero points then make up basis for fitting to be performed per http://nicky.vanforeest.com/misc/fitEllipse/fitEllipse.html
+	rois = [];
+	centres = [];
+	major_axes = [];
+	roi_stack = IJ.createImage("rois", width, height, depth, 16);
+	#roi_stack = IJ.createImage("rois", rot_imp.getWidth(), rot_imp.getHeight(), rot_imp.getNSlices(), 16);
+	pts_stack = ImageStack(width, height+1);
+	IJ.run(imp, "Line Width...", "line=3");
+	for zidx in range(fit_basis_imp.getNSlices()):
+		fit_basis_imp.setZ(zidx+1);
+		IJ.run(fit_basis_imp, "Outline", "slice");
+		IJ.run(fit_basis_imp, "Create Selection", "");
+		roi = fit_basis_imp.getRoi();
+		fit_basis_imp.killRoi();
+		pts = [(pt.x, pt.y) for pt in roi.getContainedPoints()];
+		clean_pts = convex_hull_pts(pts);
+		clean_pts = [(x, z_xy_ratio * y) for (x, y) in clean_pts];
+		# make a stack of clean points...
+		ip = FloatProcessor(width, height+1)
+		pix = ip.getPixels();
+		for pt in clean_pts:
+			pix[int(pt[1]) * width + int(pt[0])] = 128;
+		pts_stack.addSlice(ip);
+		centre, angle, axl = ellipse_fitting.fit_ellipse(clean_pts);
+		major_axes.append(max(axl));
+		centres.append(centre);
+		rot_seg_imp.setZ(zidx+1);
+		ellipse_roi = ellipse_fitting.generate_ellipse_roi(centre, angle, axl);
+		rois.append(ellipse_roi);
+	IJ.run(imp, "Line Width...", "line=1");
 
-WM.getImage("Composite").addImageListener(UpdateRoiImageListener(rois));
-IJ.run(roi_stack, "8-bit", "");
+	smooth_centres, tangent_vecs =  generate_smoothed_vessel_axis(centres, pixel_size_um=info.get_xy_pixel_size_um());
+	for zidx in range(fit_basis_imp.getNSlices()):
+		centre = smooth_centres[zidx];
+		major_axis = major_axes[zidx];
+		ellipse_roi = EllipseRoi(centre[0]-2, centre[1], centre[0]+2, centre[1], 1.0);
+		roi_stack.setZ(zidx+1);
+		roi_stack.setRoi(ellipse_roi);
+		IJ.run(roi_stack, "Set...", "value=" + str(roi_stack.getProcessor().maxValue()) + " slice");
 
-disp_imp_ch1.changes=False;
-disp_imp_ch2.changes=False;
-imp.changes=False;
-roi_stack.changes=False;
-fit_basis_imp.changes=False;
+	pts_stack_imp = ImagePlus("Cleaned points", pts_stack);
+	pts_stack_imp.setTitle("pts_stack_imp");
+	pts_stack_imp.show();
+
+	WaitForUserDialog("pause").show();
+
+	rot_seg_imp.changes = False;
+	rot_seg_imp.close();
+	egfp_imp = egfp_mch_imps[0];
+	mch_imp = egfp_mch_imps[1];
+	egfp_imp.show()
+	mch_imp.show();
+	roi_stack.show();
+	print("box height um = " + str(roi_stack.getNSlices() * info.get_xy_pixel_size_um()));
+	IJ.run(egfp_imp, "Size...", "width=" + str(width) + " height=" + str(height) + " depth=" + str(depth) + " average interpolation=Bilinear");
+	IJ.run(mch_imp, "Size...", "width=" + str(width) + " height=" + str(height) + " depth=" + str(depth) + " average interpolation=Bilinear");
+	IJ.run("Merge Channels...", "c1=[" + mch_imp.getTitle() + 
+									"] c2=[" + egfp_imp.getTitle() + 
+									"] c7=[" + roi_stack.getTitle() + "] create keep");
+
+	WM.getImage("Composite").addImageListener(UpdateRoiImageListener(rois));
+	IJ.run(roi_stack, "8-bit", "");
+
+	egfp_imp.changes=False;
+	mch_imp.changes=False;
+	roi_stack.changes=False;
+	fit_basis_imp.changes=False;
 
 
 #hsimp.addImageListener(UpdateRoiImageListener(rois));
+
+
+# It's best practice to create a function that contains the code that is executed when running the script.
+# This enables us to stop the script by just calling return.
+if __name__ in ['__builtin__','__main__']:
+    main()
