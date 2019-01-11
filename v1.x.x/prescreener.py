@@ -71,23 +71,26 @@ def main():
 	default_path = "D:\\data\\Marcksl1 cell shape analysis\\zstacks"
 	output_folder = io.output_folder_chooser(default_path);
 	used_files = [];
-	answer = 1;
+	answer = "";
 	imp = None;
-	while answer > 0:
-		answer = 0;
+	while answer != "stop":
+		answer = "stop";
 		if imp is None:
 			imp, info = io.get_image(info, default_path, used_files);
 		imp, zcrop_imp, info, default_path = perform_cropping(imp, info, output_folder, default_path);
 		answer = io.save_etc(zcrop_imp, info, output_folder);
 		used_files.append(info.get_input_file_path());
-		if answer == 2:
+		print("answer = " + str(answer));
+		if answer == "continue_newimage":
+			imp.changes = False;
+			imp.close();
 			imp = None;
 		if zcrop_imp is not None:
 			zcrop_imp.changes = False;
 			zcrop_imp.close();
-		if imp is not None:
-			imp.changes = False;
-			imp.close();	
+	if imp is not None:
+		imp.changes = False;
+		imp.close();		
 	return;
 	
 # It's best practice to create a function that contains the code that is executed when running the script.

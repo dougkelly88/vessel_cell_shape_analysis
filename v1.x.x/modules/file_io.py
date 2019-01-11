@@ -66,7 +66,7 @@ def save_etc(imp, info, output_folder):
 	info.set_experiment_id(dialog.getNextString());
 	info.set_embryo_id(dialog.getNextString());
 	if dialog.wasCanceled():
-		return 0;
+		return "stop";
 	if dialog.wasOKed():
 		exsting_files = os.listdir(output_folder);
 		r = re.compile(".*" + info.get_embryo_id() + " " + info.get_vessel_type() + ".*")
@@ -88,11 +88,11 @@ def save_etc(imp, info, output_folder):
 											"New image...", 
 											"Same image");
 		if continueDialog.cancelPressed():
-			return 0;
+			return "stop";
 		if continueDialog.yesPressed():
-			return 2;
-		return 1;
-	return 0;
+			return "continue_newimage";
+		return "continue_sameimage";
+	return "stop";
 
 def get_image(info, default_path, used_files):
 	"""handle getting image from file"""
