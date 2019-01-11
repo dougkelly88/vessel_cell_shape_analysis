@@ -153,7 +153,7 @@ def split_and_rotate(imp, info):
 	rot_proj_imp = Slicer().reslice(proj_imp);
 	rot_proj_imp.setTitle("rot_proj_imp");
 	egfp_mch_imps = [];
-	egfp_idx = 0 if "gfp" in info.ch1_label.lower() else 1;
+	egfp_idx = 0 if "gfp" in info.ch1_label.casefold() else 1;
 	mch_idx = int(not(egfp_idx)); # assume two channel...
 	for ch_idx in [egfp_idx, mch_idx]:
 		if ch_idx==seg_ch_idx:
