@@ -141,28 +141,13 @@ def convex_hull_pts(pts):
 	#print(clean_pts);
 	return clean_pts;
 
-
-def main():
-	info = PrescreenInfo();
-	info.load_info_from_json(metadata_test_path);
-	z_xy_ratio = abs(info.get_z_plane_spacing_um()) / info.get_xy_pixel_size_um();
-	print(z_xy_ratio);
-	bfimp = bf.openImagePlus(im_test_path);
-	imp = bfimp[0];
-	imp.show();
-	cal = imp.getCalibration();
-	IJ.run(imp, "Set Scale...", "distance=0 known=0 pixel=1 unit=pixel");
+def split_and_rotate(imp, info):
+	"""return image to segment on, image to project out, and images to display"""
+	# for now, assume that these are ISVs and that embryo is mounted in familiar fashion. First of these can be developed out...
 	seg_ch_idx, proj_ch_idx = ui.choose_segmentation_and_projection_channels(info);
-
-	# split channels and get EC-label channel (TODO: sort channel according to metadata excitation wavelength)
-	
-	# TODO: bundle channel separation and rotation into a function and see if seg, proj can be closed after generating rotated imps?
 	channels  = ChannelSplitter().split(imp);
 	seg_imp = Duplicator().run(channels[seg_ch_idx]); # use Duplicator to decouple - can do smarter to save memory?
 	proj_imp = Duplicator().run(channels[proj_ch_idx]);
-
-	# (crudely) ROTATE so that long axis is z axis...
-	
 	rot_seg_imp = Slicer().reslice(seg_imp);
 	rot_seg_imp.setTitle("rot_seg_imp");
 	rot_proj_imp = Slicer().reslice(proj_imp);
@@ -179,7 +164,24 @@ def main():
 			egfp_mch_imps.append(Slicer().reslice(Duplicator().run(channels[ch_idx])));
 	imp.changes=False;
 	imp.close();
+	seg_imp.changes = False;
+	proj_imp.changes = False;
+	seg_imp.close();
+	proj_imp.close();
+	return rot_seg_imp, rot_proj_imp, egfp_mch_imps
 
+def main():
+	info = PrescreenInfo();
+	info.load_info_from_json(metadata_test_path);
+	z_xy_ratio = abs(info.get_z_plane_spacing_um()) / info.get_xy_pixel_size_um();
+	print(z_xy_ratio);
+	bfimp = bf.openImagePlus(im_test_path);
+	imp = bfimp[0];
+	imp.show();
+	cal = imp.getCalibration();
+	IJ.run(imp, "Set Scale...", "distance=0 known=0 pixel=1 unit=pixel");
+
+	rot_seg_imp, rot_proj_imp, egfp_mch_imps = split_and_rotate(imp, info);
 	depth = rot_seg_imp.getNSlices() if rot_seg_imp.getNSlices() > rot_seg_imp.getNFrames() else rot_seg_imp.getNFrames();
 	width = rot_seg_imp.getWidth();
 	height = int(round(rot_seg_imp.getHeight() * z_xy_ratio));
@@ -233,8 +235,6 @@ def main():
 	pts_stack_imp = ImagePlus("Cleaned points", pts_stack);
 	pts_stack_imp.setTitle("pts_stack_imp");
 	pts_stack_imp.show();
-
-	WaitForUserDialog("pause").show();
 
 	rot_seg_imp.changes = False;
 	rot_seg_imp.close();
