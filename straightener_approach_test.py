@@ -1,6 +1,6 @@
  # @ImagePlus imp
 from ij import ImageStack, ImagePlus, IJ
-from ij.gui import WaitForUserDialog
+from ij.gui import WaitForUserDialog, Roi, PolygonRoi
 from ij.plugin import ChannelSplitter, Straightener, ZProjector
 
 # run on imp containing result of tubefitter + IJ.run(imp, "Reslice [/]...", "output=1.000 start=Top avoid") + spline-fitted 
@@ -10,18 +10,36 @@ from ij.plugin import ChannelSplitter, Straightener, ZProjector
 imp.killRoi();
 IJ.run(imp, "Reslice [/]...", "output=1.000 start=Top avoid");
 rot_imp = IJ.getImage();
-zproj_imp = ZProjector.run(rot_imp, "max");
-zproj_imp.show();
-IJ.setTool("freeline");
-WaitForUserDialog("Draw a line").show();
-IJ.run(zproj_imp, "Fit Spline", "");
-roi = zproj_imp.getRoi();
-zproj_imp.close();
-
+crop_roi = Roi(10, 0, rot_imp.getWidth()-20, rot_imp.getHeight());
+rot_imp.setRoi(crop_roi);
+rot_imp.crop();
+rot_imp.show();
+WaitForUserDialog("pause").show();
 split_ch = ChannelSplitter().split(rot_imp);
 mch_imp = split_ch[0];
 egfp_imp = split_ch[1];
 roi_imp = split_ch[2];
+zproj_imp = ZProjector.run(roi_imp, "max");
+IJ.setRawThreshold(zproj_imp, 33153, 65535, None);
+IJ.run(zproj_imp, "Make Binary", "")
+zproj_imp.show();
+raise error;
+IJ.run(zproj_imp, "Skeletonize", "");
+IJ.run(zproj_imp, "Create Selection", "");
+roi = zproj_imp.getRoi();
+floatpoly = roi.getContainedFloatPoints();
+roi = PolygonRoi(floatpoly, Roi.FREELINE);
+zproj_imp.setRoi(roi);
+WaitForUserDialog("pause").show();
+
+#IJ.setTool("freeline");
+#WaitForUserDialog("Draw a line").show();
+#IJ.run(zproj_imp, "Fit Spline", "");
+#roi = zproj_imp.getRoi();
+zproj_imp.changes = False;
+zproj_imp.close();
+
+
 
 z_planes = egfp_imp.getNSlices();
 #straight_stack = Straightener().straightenStack(egfp_imp, roi, 100);

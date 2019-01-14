@@ -2,11 +2,13 @@
 import math, sys, os
 
 from ij import IJ, ImageStack, ImagePlus
-from ij.gui import EllipseRoi, WaitForUserDialog, Roi
-from ij.plugin import ChannelSplitter, Slicer, HyperStackConverter, ImageCalculator, Duplicator, SubstackMaker
+from ij.gui import EllipseRoi, WaitForUserDialog, Roi, PolygonRoi
+from ij.io import FileSaver
+from ij.plugin import ChannelSplitter, Slicer, HyperStackConverter, ImageCalculator, Duplicator, SubstackMaker, Straightener
 from ij.process import StackProcessor, AutoThresholder, StackStatistics, FloatProcessor
 from ij import WindowManager as WM
 from loci.plugins import BF as bf
+
 
 #im_test_path = "D:\\data\\Marcksl1 cell shape analysis\\e27 ISV1.tif";
 #metadata_test_path = "D:\\data\Marcksl1 cell shape analysis\\Cropped\\2018-12-05 16-06-29 output\\Cropped UAS-marcksl1b-delED e27 xISV 1.json";
@@ -14,7 +16,7 @@ from loci.plugins import BF as bf
 #metadata_test_path = "D:\\data\\Structural imaging\\Imaging protocol tests\\2018-09-14 vessel structure imaging\\vessel_structure_protocol3_20180914_174448\\Cropped vessels\\2018-12-12 16-38-31 output\\Cropped dextran-rhodamine kdrl-egfp vessel_structure etest_embryo aISV 1.json";
 im_test_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\AB inj marcksl1b-EGFP, rhodamine-dextran uangiography\\Cropped\\2019-01-10 16-03-47 output\\Cropped Dextran-Rhodamine Marcksl1b-EGFP Lumen staining test eE1 xISV 1.tif";
 metadata_test_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\AB inj marcksl1b-EGFP, rhodamine-dextran uangiography\\Cropped\\2019-01-10 16-03-47 output\\Cropped Dextran-Rhodamine Marcksl1b-EGFP Lumen staining test eE1 xISV 1.json";
-
+output_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\straightening output";
 
 release = False;
 
@@ -71,6 +73,9 @@ def threshold_and_binarise(imp, z_xy_ratio):
 	IJ.run(imp, "3D Simple Segmentation", "low_threshold=" + str(thresh_lev + 1) + 
 												" min_size=" + str(max_voxel_volume) + " max_size=-1");
 	fit_basis_imp = WM.getImage("Seg");
+	bin_imp = WM.getImage("Bin");
+	bin_imp.changes=False;
+	bin_imp.close();
 	IJ.setThreshold(fit_basis_imp, 1, 65535);
 	IJ.run(fit_basis_imp, "Convert to Mask", "method=Default background=Dark list");
 	#IJ.run(fit_basis_imp, "Fill Holes", "stack");
@@ -170,6 +175,94 @@ def split_and_rotate(imp, info):
 	proj_imp.close();
 	return rot_seg_imp, rot_proj_imp, egfp_mch_imps
 
+def lin_interp_1d(old_x, old_y, new_x):
+	"""stretch a curve described by points [(old_x, old_y)] to cover domain given by [new_x]"""
+	xpp = [o * float(len(old_x)-1)/(len(new_x)-1) for o in new_x]
+	new_y = [old_y[0]];
+	for o in xpp:
+	    if (o!=xpp[0]) & (o!=xpp[-1]):
+	        xa = int(math.floor(o));
+	        xb = int(math.ceil(o));
+	        ya = old_y[xa];
+	        yb = old_y[xb];
+	        new_y.append(ya + (yb - ya)*(o - xa)/(xb - xa));
+	new_y.append(old_y[-1]);
+	return new_y;
+	
+
+def straighten_vessel(imp, smooth_centres, it=1):
+	"""use IJ straigtening tool to deal with convoluted vessels"""
+	print("straighten vessel input image dims = " + str(imp.getWidth()) + "x" + str(imp.getHeight()));
+	
+	IJ.run(imp, "Reslice [/]...", "output=1.000 start=Top avoid");
+	rot_imp = IJ.getImage();
+	if it==1:
+		roi = PolygonRoi([x for x, y, z in smooth_centres], [z for x, y, z in smooth_centres], Roi.FREELINE);
+		print("len interp polygon = " + str(roi.getInterpolatedPolygon().npoints));
+	elif it==2:
+		new_zs = [z for z in range(rot_imp.getWidth())];
+		new_ys = lin_interp_1d([z for x, y, z in smooth_centres], [y for x, y, z in smooth_centres], new_zs);
+		#roi = PolygonRoi([z for x, y, z in smooth_centres], [y for x, y, z in smooth_centres], Roi.FREELINE);
+		roi = PolygonRoi(new_zs, new_ys, Roi.FREELINE);
+#		roi = PolygonRoi([x for x in range(rot_imp.getWidth())], 
+#						[z for z in roi.getInterpolatedPolygon(1.0, False).ypoints], 
+#						Roi.FREELINE);
+	
+	
+	imp.changes = False;
+	print(imp.getTitle());
+	imp.close();
+	#rot_imp.setRoi(roi);
+	rot_imp.setTitle("Composite");
+	split_ch = ChannelSplitter().split(rot_imp);
+	mch_imp = split_ch[0];
+	egfp_imp = split_ch[1];
+	roi_imp = split_ch[2];
+
+	roi_imp.show();
+	roi_imp.setRoi(roi);
+
+#	WaitForUserDialog("pause").show();
+	roi_imp.hide();
+
+	for zidx in range(egfp_imp.getNSlices()):
+		for chidx in range(3):
+			#print("Working on " + str(["egfp", "mCh", "roi"][chidx]));
+			split_ch[chidx].setZ(zidx+1);
+			split_ch[chidx].setRoi(roi);
+			ip = Straightener().straightenLine(split_ch[chidx], 150);
+			if chidx==1:
+				if zidx==0:
+					egfp_straight_stack = ImageStack(ip.getWidth(), ip.getHeight());
+				egfp_straight_stack.addSlice(ip);
+			elif chidx==0:
+				if zidx==0:
+					mch_straight_stack = ImageStack(ip.getWidth(), ip.getHeight());
+				mch_straight_stack.addSlice(ip);
+			else:
+				if zidx==0:
+					roi_straight_stack = ImageStack(ip.getWidth(), ip.getHeight());
+				roi_straight_stack.addSlice(ip);
+
+	egfp_out_imp = ImagePlus("Straightened EGFP", egfp_straight_stack);
+	mch_out_imp = ImagePlus("Straightened mCh", mch_straight_stack);
+	roi_out_imp = ImagePlus("Straightened ROI", roi_straight_stack);
+	egfp_out_imp.show();
+	mch_out_imp.show();
+	roi_out_imp.show();
+	IJ.run("Merge Channels...", "c1=[" + mch_out_imp.getTitle() + 
+										"] c2=[" + egfp_out_imp.getTitle() + 
+										"] c7=[" + roi_out_imp.getTitle() + "] create keep");
+#	WaitForUserDialog("pause").show();
+	if it==1:
+		egfp_out_imp.close()
+		mch_out_imp.close()
+		roi_out_imp.close()
+	new_composite = IJ.getImage();
+	FileSaver(new_composite).saveAsTiffStack(os.path.join(output_path, "after rotation " + str(it) + ".tif"));
+	return new_composite;
+
+
 def main():
 	info = PrescreenInfo();
 	info.load_info_from_json(metadata_test_path);
@@ -249,15 +342,37 @@ def main():
 	IJ.run("Merge Channels...", "c1=[" + mch_imp.getTitle() + 
 									"] c2=[" + egfp_imp.getTitle() + 
 									"] c7=[" + roi_stack.getTitle() + "] create keep");
+	
 
-	WM.getImage("Composite").addImageListener(UpdateRoiImageListener(rois));
+	#WM.getImage("Composite").addImageListener(UpdateRoiImageListener(rois));
 	IJ.run(roi_stack, "8-bit", "");
 
 	egfp_imp.changes=False;
 	mch_imp.changes=False;
 	roi_stack.changes=False;
 	fit_basis_imp.changes=False;
+	pts_stack_imp.changes = False;
+	egfp_imp.close();
+	mch_imp.close();
+	roi_stack.close();
+	fit_basis_imp.close();
+	pts_stack_imp.close();
+	composite_imp = WM.getImage("Composite");
+	FileSaver(composite_imp).saveAsTiffStack(os.path.join(output_path, "segmentation result.tif"));
+	
+	zcoords = [i for i in range(composite_imp.getNSlices())];
+	xyz_smooth_centres = [(x, y, z) for ((x, y), z) in zip(smooth_centres, zcoords)];
+	
+	composite_imp2 = straighten_vessel(composite_imp, xyz_smooth_centres);
+	composite_imp3 = straighten_vessel(composite_imp2, xyz_smooth_centres, it=2);
+	WaitForUserDialog("pause before close").show();
+	IJ.run(composite_imp3, "Reslice [/]...", "output=1.000 start=Left avoid");
 
+	# TODO - figure out how to relate new z-spacing to original distance along isv
+	# TODO - figure out how best to deal with varying vessel diameter, while maintaining wrapping behaviour...
+	# should we unwrap to l and theta, or l and c (circumferential distance?)
+
+	#IJ.close("*")
 
 #hsimp.addImageListener(UpdateRoiImageListener(rois));
 
