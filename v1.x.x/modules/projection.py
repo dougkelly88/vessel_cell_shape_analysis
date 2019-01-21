@@ -84,7 +84,7 @@ def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=Fa
 		centre = (maxpt.xpoints[0], maxpt.ypoints[0]);
 		ring_roi_xs = [];
 		ring_roi_ys = [];
-		for theta in range(359):
+		for theta in range(360):
 			pt1 = (centre[0] + min_r_pix * math.cos(math.radians(theta)), 
 					centre[1] + min_r_pix * math.sin(math.radians(theta)));
 			pt2 = (centre[0] + max_r_pix * math.cos(math.radians(theta)), 
@@ -115,16 +115,16 @@ def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=Fa
 	#print(centres);
 	for ch in split_chs:
 		ch.close();
+#
+#	w = len(projected_im_row);
+#	h = len(projected_im_pix);
+#	ip = FloatProcessor(w, h);
+#	pix = ip.getPixels();
+#	for x in range(w):
+#		for y in range(h):
+#			pix[y * w + x] = projected_im_pix[y][x];
 
-	w = len(projected_im_row);
-	h = len(projected_im_pix);
-	ip = FloatProcessor(w, h);
-	pix = ip.getPixels();
-	for x in range(w):
-		for y in range(h):
-			pix[y * w + x] = projected_im_pix[y][x];
-
-	out_imp = ImagePlus("projected", ip);
+	out_imp = ImagePlus("projected", FloatProcessor([list(x) for x in zip(*projected_im_pix)]));
 	out_imp.show();
 
 	if generate_roi_stack:
@@ -157,6 +157,26 @@ def calculate_mean_r(imp, ring_rois, centres):
 	rimp.close();
 	mask_imp.close();
 	return mean_r;
+
+def generate_r_image(imp, ring_rois, centres):
+	"""for each point in the projection, calculate the distance to the vessel axis and present as an image"""
+	IJ.setAutoThreshold(imp, "Intermodes dark");
+	bp = imp.createThresholdMask();
+	bp.dilate();
+	bp.erode();
+
+	mask_imp = ImagePlus("Mask", bp);
+
+	r_list = [];
+	for lidx, (roi, centre) in enumerate(zip(ring_rois, centres)):
+		r_sublist = [math.sqrt((x - centre[0])**2 + (y - centre[1])**2) if bp.get(theta, lidx) > 128 else 0 for theta, (x, y) in enumerate(zip(roi.getPolygon().xpoints, roi.getPolygon().ypoints))];
+		r_list.append(r_sublist);
+		
+	rimp = ImagePlus("Radii", FloatProcessor([list(x) for x in zip(*r_list)]));
+	rimp.show();
+	IJ.run(rimp, "Cyan Hot", "");
+
+	return rimp, mask_imp
 
 def calculate_area_and_aspect_ratio(imp, mean_vessel_r, raw_voxel_side):
 	"""return the area and aspect ratio of the cell based on the projected image and convert to real-world units"""
@@ -208,15 +228,28 @@ def do_slicewise_unwrap(imp):
 		IJ.run(mask_imp, "Create Selection", "");
 		roi = mask_imp.getRoi();
 		print([(x, y) for x, y in zip(roi.getInterpolatedPolygon().xpoints, roi.getPolygon().ypoints)]);
-	
+
+	
 	mask_imp.show();
 	cl_imp.close()
 
 	
-#out_imp, _, ring_rois, centres = do_angular_projection(imp);
+out_imp, _, ring_rois, centres = do_angular_projection(imp, generate_roi_stack=True);
+r_imp, cell_mask = generate_r_image(out_imp, ring_rois, centres);
+ring_roi = ring_rois[499];
+centre = centres[499];
+print("roi");
+print([(x, y) for x, y in zip(ring_roi.getPolygon().xpoints, ring_roi.getPolygon().ypoints)]);
+print("r");
+print([math.sqrt((x - centre[0])**2 + (y - centre[1])**2) for x, y in zip(ring_roi.getPolygon().xpoints, ring_roi.getPolygon().ypoints)]);
+#for theta, (x, y) in enumerate(zip(ring_roi.getPolygon().xpoints, ring_roi.getPolygon().ypoints)):
+#	print("theta = " + str(theta));
+#	print("roi position = " + str((x, y)));
+#	print("centre = " + str(centre))
+#	print("r = " + str(math.sqrt((x - centre[0])**2 + (y - centre[1])**2)))
 #mean_r = calculate_mean_r(out_imp, ring_rois, centres);
 #print("mean r = " + str(mean_r));
 #_, unwrap_axis = twist_and_unwrap(imp);
 #print(calculate_area_and_aspect_ratio(imp, 33, 0.108333))
-do_slicewise_unwrap(imp)
+#do_slicewise_unwrap(imp)
 #print(unwrap_axis);
