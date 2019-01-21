@@ -6,14 +6,13 @@ from ij.plugin import Duplicator, MontageMaker, ChannelSplitter
 from ij.plugin.filter import MaximumFinder
 from ij.process import FloatProcessor, AutoThresholder
 
-def twist_and_unwrap(imp):
+def twist_and_unwrap(imp, rimp):
 	"""from the output of angular projection, define an axis along which to unzip the vessel and return this unzipped image"""
 	IJ.setTool("freeline");
 	WaitForUserDialog("Input required...", "Please draw the line down which unwrapping should occur...").show();
 	roi = imp.getRoi();
 	if roi is None:
 		raise ValueError;
-	unwrap_imp = IJ.createImage("unwrap", imp.getWidth(), imp.getHeight(), 2, 32);
 	unwrap_poly = roi.getPolygon();
 	unwrap_poly_xs = [x for x in unwrap_poly.xpoints];
 	unwrap_poly_ys = [y for y in unwrap_poly.ypoints];
@@ -33,9 +32,18 @@ def twist_and_unwrap(imp):
 	unwrap_poly_ys.append(unwrap_poly_ys[-1]);
 	unwrap_poly_ys.append(unwrap_poly_ys[0]);
 	new_roi = PolygonRoi(unwrap_poly_xs, unwrap_poly_ys, Roi.POLYGON);
-	left_crop = new_roi.getBoundingRect().x;
+
+	unwrapped_projection_imp = do_unwrap(imp, new_roi);
+	unwrapped_r_imp = do_unwrap(rimp, new_roi);
+	return unwrapped_projection_imp, unwrapped_r_imp, unwrap_axis;
+
+def do_unwrap(imp, unwrap_roi):
+	"""given a roi enclosing the image on one side of an arbitrary unwrap axis, generate an unwrapped image"""
+	input_title = imp.getTitle();
+	unwrap_imp = IJ.createImage("unwrap", imp.getWidth(), imp.getHeight(), 2, 32);
+	left_crop = unwrap_roi.getBoundingRect().x;
 	dummy = Duplicator().run(imp);
-	dummy.setRoi(new_roi);
+	dummy.setRoi(unwrap_roi);
 	IJ.run(dummy, "Make Inverse", "");
 	IJ.run(dummy, "Set...", "value=0");
 	ip = dummy.getProcessor();
@@ -43,7 +51,7 @@ def twist_and_unwrap(imp):
 	dummy.close();
 	unwrap_imp.setZ(2);
 	dummy = Duplicator().run(imp);
-	dummy.setRoi(new_roi);
+	dummy.setRoi(unwrap_roi);
 	IJ.run(dummy, "Set...", "value=0");
 	ip = dummy.getProcessor();
 	unwrap_imp.setProcessor(ip);
@@ -55,10 +63,10 @@ def twist_and_unwrap(imp):
 	tile_imp.setRoi(crop_roi);
 	final_imp = tile_imp.crop();
 	tile_imp.close()
-	final_imp.setTitle("Twisted and unwrapped")
-	final_imp.show();
-	return final_imp, unwrap_axis;
+	final_imp.setTitle(input_title + " twisted and unwrapped")
+	return final_imp;
 
+	
 def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=False):
 	"""perform ray-based projection of vessel wall, c.f. ICY TubeSkinner (Lancino 2018)"""
 	split_chs = ChannelSplitter().split(imp);
@@ -112,17 +120,8 @@ def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=Fa
 		#egfp_imp.setRoi(ring_roi);
 		projected_im_pix.append(projected_im_row);
 		
-	#print(centres);
 	for ch in split_chs:
 		ch.close();
-#
-#	w = len(projected_im_row);
-#	h = len(projected_im_pix);
-#	ip = FloatProcessor(w, h);
-#	pix = ip.getPixels();
-#	for x in range(w):
-#		for y in range(h):
-#			pix[y * w + x] = projected_im_pix[y][x];
 
 	out_imp = ImagePlus("projected", FloatProcessor([list(x) for x in zip(*projected_im_pix)]));
 	out_imp.show();
@@ -236,12 +235,10 @@ def do_slicewise_unwrap(imp):
 	
 out_imp, _, ring_rois, centres = do_angular_projection(imp, generate_roi_stack=True);
 r_imp, cell_mask = generate_r_image(out_imp, ring_rois, centres);
-ring_roi = ring_rois[499];
-centre = centres[499];
-print("roi");
-print([(x, y) for x, y in zip(ring_roi.getPolygon().xpoints, ring_roi.getPolygon().ypoints)]);
-print("r");
-print([math.sqrt((x - centre[0])**2 + (y - centre[1])**2) for x, y in zip(ring_roi.getPolygon().xpoints, ring_roi.getPolygon().ypoints)]);
+unwrapped_projection_imp, unwrapped_r_imp, unwrap_axis = twist_and_unwrap(out_imp, r_imp);
+unwrapped_projection_imp.show();
+unwrapped_r_imp.show();
+
 #for theta, (x, y) in enumerate(zip(ring_roi.getPolygon().xpoints, ring_roi.getPolygon().ypoints)):
 #	print("theta = " + str(theta));
 #	print("roi position = " + str((x, y)));
@@ -249,7 +246,7 @@ print([math.sqrt((x - centre[0])**2 + (y - centre[1])**2) for x, y in zip(ring_r
 #	print("r = " + str(math.sqrt((x - centre[0])**2 + (y - centre[1])**2)))
 #mean_r = calculate_mean_r(out_imp, ring_rois, centres);
 #print("mean r = " + str(mean_r));
-#_, unwrap_axis = twist_and_unwrap(imp);
+
 #print(calculate_area_and_aspect_ratio(imp, 33, 0.108333))
 #do_slicewise_unwrap(imp)
 #print(unwrap_axis);
