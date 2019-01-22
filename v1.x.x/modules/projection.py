@@ -189,7 +189,7 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val):
 #	WaitForUserDialog("pasue - filled holes").show();
 	IJ.run(mask_imp, "Divide...", "value=255");
 #	WaitForUserDialog("pasue - scaled to 0-1").show();
-	mask_imp.show();
+#	mask_imp.show();
 
 	r_list = [];
 	for lidx, (roi, centre) in enumerate(zip(ring_rois, centres)):
@@ -200,32 +200,30 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val):
 	r_imp = do_unwrap(r_imp, unwrap_axis);
 	r_imp = ImageCalculator().run("Multiply create", r_imp, mask_imp);
 	IJ.run(r_imp, "Cyan Hot", "");
-
-	mask_imp.changes = False;
-	mask_imp.close();
 	
-	return r_imp
+	return r_imp, mask_imp;
 
-def calculate_area_and_aspect_ratio(imp, mean_vessel_r, raw_voxel_side):
+def calculate_area_and_aspect_ratio(r_imp, mask_imp, raw_voxel_side):
 	"""return the area and aspect ratio of the cell based on the projected image and convert to real-world units"""
-	IJ.setAutoThreshold(imp, "Intermodes light");
-	bp = imp.createThresholdMask();
-	bp.dilate();
-	bp.erode();
-	mask_imp = ImagePlus("Mask", bp);
 	mask_imp.show();
+	bp = mask_imp.getProcessor();
+	bp.setThreshold(0.5, bp.maxValue(), FloatProcessor.NO_LUT_UPDATE);
 	IJ.run(mask_imp, "Create Selection", "");
 	roi = mask_imp.getRoi();
-	raw_area = mask_imp.getStatistics().area;
-	raw_height = roi.getBoundingRect().height;
-	IJ.run(mask_imp, "Select All", "");	
-	IJ.run(mask_imp, "Invert", "");
-	profile = ProfilePlot(mask_imp, True).getProfile();
-	raw_width = sum(profile)/sum([p > 0 for p in profile]);
-	circumferential_pixel_width = raw_voxel_side*2*math.pi*mean_vessel_r/360;
-	aspect_ratio_circumferential_to_axial = circumferential_pixel_width*raw_width/(raw_voxel_side*raw_height);
-	area = circumferential_pixel_width*raw_voxel_side*raw_area;
+	r_imp.setRoi(roi);
+	roi = r_imp.getRoi();
+	raw_height = roi.getBounds().height;
+	min_y = roi.getBounds().y;
+	widths = [0] * raw_height;
+	fp = r_imp.getProcessor();
+	for point in roi:
+		print(fp.getPixelValue(point.x, point.y));
+		widths[point.y - min_y] = widths[point.y - min_y] + fp.getPixelValue(point.x, point.y) * raw_voxel_side * 2 * math.pi/360;
+	aspect_ratio_circumferential_to_axial = (sum(widths)/len(widths)) / (raw_height * raw_voxel_side);
+	area = sum(widths) * raw_voxel_side;
+	
 	return area, aspect_ratio_circumferential_to_axial;
+	
 	
 
 def do_slicewise_unwrap(imp):
@@ -265,14 +263,14 @@ Prefs.blackBackground = True;
 
 out_imp, _, ring_rois, centres = do_angular_projection(imp, generate_roi_stack=True);
 IJ.setAutoThreshold(out_imp, "Intermodes dark");
-#print("max threshold = " + str(out_imp.getProcessor().getMaxThreshold()));
 threshold_val = out_imp.getProcessor().getMinThreshold();
-#print("min threshold = " + str(threshold_val));
 unwrapped_projection_imp, unwrap_axis = twist_and_unwrap(out_imp);
-r_imp = generate_r_image(out_imp, ring_rois, centres, unwrap_axis, threshold_val);
+r_imp, mask_imp = generate_r_image(out_imp, ring_rois, centres, unwrap_axis, threshold_val);
 
 r_imp.show();
 out_imp.close();
 unwrapped_projection_imp.show();
-#cell_mask.close();
+area, aspect_ratio = calculate_area_and_aspect_ratio(r_imp, mask_imp, 0.108333);
+print("A = " + str(area));
+print("Aspect ratio = " + str(aspect_ratio));
 
