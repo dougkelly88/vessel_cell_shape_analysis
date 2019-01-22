@@ -1,6 +1,6 @@
 # @ImagePlus imp
 import math, sys, os
-from ij import ImageStack, ImagePlus, IJ
+from ij import ImageStack, ImagePlus, IJ, Prefs
 from ij.gui import PolygonRoi, Roi, WaitForUserDialog, Line, ProfilePlot
 from ij.plugin import Duplicator, MontageMaker, ChannelSplitter, ImageCalculator
 #from ij.plugin.filter import MaximumFinder
@@ -31,10 +31,9 @@ def twist_and_unwrap(imp):
 	unwrapped_projection_imp = do_unwrap(imp, unwrap_axis);
 	return unwrapped_projection_imp, unwrap_axis;
 
-def do_unwrap(imp, unwrap_axis):
+def do_unwrap(imp, unwrap_axis, colorbar_width=200):
 	"""given an unwrap axis extending from top to bottom of an image, generate an unwrapped image"""
 	# extend to right hand corners...
-	print(unwrap_axis)
 	unwrap_poly_xs = [x for x, y in unwrap_axis];
 	unwrap_poly_ys = [y for x, y in unwrap_axis];
 	unwrap_poly_xs.append(imp.getWidth());
@@ -62,12 +61,13 @@ def do_unwrap(imp, unwrap_axis):
 	dummy.close();
 	tile_imp = MontageMaker().makeMontage2(unwrap_imp, 2, 1, 1, 1, 2, 1, 0, False);
 	# do thresholding/binarisation/profile plot to work out where to crop tight? otherwise...
-	crop_roi = Roi(left_crop, 1, tile_imp.getWidth() - left_crop, unwrap_imp.getHeight());
+	crop_roi = Roi(left_crop, 1, tile_imp.getWidth() - left_crop + colorbar_width, unwrap_imp.getHeight());
 	unwrap_imp.close()
 	tile_imp.setRoi(crop_roi);
 	final_imp = tile_imp.crop();
 	tile_imp.close()
 	final_imp.setTitle(input_title + " twisted and unwrapped")
+#	final_imp.show();
 	return final_imp;
 
 	
@@ -104,13 +104,6 @@ def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=Fa
 		IJ.run(proj_imp, "Set...", "value=0 slice");
 		IJ.run(proj_imp, "Make Inverse", "");
 		roi = proj_imp.getRoi();
-#		print("New method = "  +str((roi.getStatistics().xCentroid, roi.getStatistics().yCentroid)));
-#		cl_imp.setZ(zidx+1);
-#		ip = cl_imp.getProcessor();
-#		maxpt = MaximumFinder().getMaxima(ip, 10, True)
-#		print("Previous method = " + str((maxpt.xpoints[0], maxpt.ypoints[0])));
-#		centres.append((maxpt.xpoints[0], maxpt.ypoints[0]));
-#		centre = (maxpt.xpoints[0], maxpt.ypoints[0]);
 		centre = (roi.getStatistics().xCentroid, roi.getStatistics().yCentroid);
 		centres.append(centre);
 		ring_roi_xs = [];
@@ -179,18 +172,24 @@ def calculate_mean_r(imp, ring_rois, centres):
 	mask_imp.close();
 	return mean_r;
 
-def generate_r_image(imp, ring_rois, centres, unwrap_axis):
+def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val):
 	"""for each point in the projection, calculate the distance to the vessel axis and present as an image"""
-	IJ.setAutoThreshold(imp, "Intermodes dark");
-	bp = imp.createThresholdMask();
+	fp = imp.getProcessor()
+	fp.setThreshold(threshold_val, fp.maxValue(), FloatProcessor.NO_LUT_UPDATE);
+	bp = fp.createMask();
 	bp.dilate();
 	bp.erode();
 
 	mask_imp = ImagePlus("Mask", bp);
-	mask_imp.show();
-	IJ.run(mask_imp, "Fill Holes", "");
+#	mask_imp.show();
+#	WaitForUserDialog("pasue - generated mask").show();
 	mask_imp = do_unwrap(mask_imp, unwrap_axis);
+#	WaitForUserDialog("pasue - unwrapped").show();
+	IJ.run(mask_imp, "Fill Holes", "");
+#	WaitForUserDialog("pasue - filled holes").show();
 	IJ.run(mask_imp, "Divide...", "value=255");
+#	WaitForUserDialog("pasue - scaled to 0-1").show();
+	mask_imp.show();
 
 	r_list = [];
 	for lidx, (roi, centre) in enumerate(zip(ring_rois, centres)):
@@ -202,7 +201,10 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis):
 	r_imp = ImageCalculator().run("Multiply create", r_imp, mask_imp);
 	IJ.run(r_imp, "Cyan Hot", "");
 
-	return r_imp, mask_imp
+	mask_imp.changes = False;
+	mask_imp.close();
+	
+	return r_imp
 
 def calculate_area_and_aspect_ratio(imp, mean_vessel_r, raw_voxel_side):
 	"""return the area and aspect ratio of the cell based on the projected image and convert to real-world units"""
@@ -259,24 +261,18 @@ def do_slicewise_unwrap(imp):
 	mask_imp.show();
 	cl_imp.close()
 
-	
+Prefs.blackBackground = True;
+
 out_imp, _, ring_rois, centres = do_angular_projection(imp, generate_roi_stack=True);
+IJ.setAutoThreshold(out_imp, "Intermodes dark");
+#print("max threshold = " + str(out_imp.getProcessor().getMaxThreshold()));
+threshold_val = out_imp.getProcessor().getMinThreshold();
+#print("min threshold = " + str(threshold_val));
 unwrapped_projection_imp, unwrap_axis = twist_and_unwrap(out_imp);
-r_imp, cell_mask = generate_r_image(out_imp, ring_rois, centres, unwrap_axis);
+r_imp = generate_r_image(out_imp, ring_rois, centres, unwrap_axis, threshold_val);
 
 r_imp.show();
 out_imp.close();
 unwrapped_projection_imp.show();
+#cell_mask.close();
 
-
-#for theta, (x, y) in enumerate(zip(ring_roi.getPolygon().xpoints, ring_roi.getPolygon().ypoints)):
-#	print("theta = " + str(theta));
-#	print("roi position = " + str((x, y)));
-#	print("centre = " + str(centre))
-#	print("r = " + str(math.sqrt((x - centre[0])**2 + (y - centre[1])**2)))
-#mean_r = calculate_mean_r(out_imp, ring_rois, centres);
-#print("mean r = " + str(mean_r));
-
-#print(calculate_area_and_aspect_ratio(imp, 33, 0.108333))
-#do_slicewise_unwrap(imp)
-#print(unwrap_axis);
