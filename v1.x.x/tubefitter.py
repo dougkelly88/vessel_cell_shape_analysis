@@ -1,7 +1,7 @@
 # use D:\data\Marcksl1 cell shape analysis\e27 ISV1.tif for testing,,,
 import math, sys, os
 
-from ij import IJ, ImageStack, ImagePlus
+from ij import IJ, ImageStack, ImagePlus, Prefs
 from ij.gui import EllipseRoi, WaitForUserDialog, Roi, PolygonRoi
 from ij.io import FileSaver
 from ij.plugin import ChannelSplitter, Slicer, HyperStackConverter, ImageCalculator, Duplicator, SubstackMaker, Straightener
@@ -127,7 +127,6 @@ def normalise_to_fill_range(imp, max_val=255):
 
 def convex_hull_pts(pts):
 	"""Return points describing effective convex hull from non-contiguous outline points"""
-	#print(pts);
 	clean_pts = [];
 	temp_pts = [];
 	ys = [y for (x,y) in pts]
@@ -136,14 +135,12 @@ def convex_hull_pts(pts):
 	    temp_pts.append((xs[0], yy));
 	    if len(xs)>1:
 	        temp_pts.append((xs[-1], yy));
-	#print(temp_pts)
 	xs = [x for (x,y) in temp_pts];
 	for xx in set(xs):
 	    ys = sorted([y for (x,y) in temp_pts if x==xx]);
 	    clean_pts.append((xx, ys[0]));
 	    if len(xs)>1:
 	        clean_pts.append((xx, ys[-1]));
-	#print(clean_pts);
 	return clean_pts;
 
 def split_and_rotate(imp, info):
@@ -189,7 +186,6 @@ def lin_interp_1d(old_x, old_y, new_x):
 	new_y.append(old_y[-1]);
 	return new_y;
 	
-
 def straighten_vessel(imp, smooth_centres, it=1):
 	"""use IJ straigtening tool to deal with convoluted vessels"""
 	print("straighten vessel input image dims = " + str(imp.getWidth()) + "x" + str(imp.getHeight()));
@@ -219,15 +215,14 @@ def straighten_vessel(imp, smooth_centres, it=1):
 	egfp_imp = split_ch[1];
 	roi_imp = split_ch[2];
 
-	roi_imp.show();
+#	roi_imp.show();
 	roi_imp.setRoi(roi);
 
 #	WaitForUserDialog("pause").show();
-	roi_imp.hide();
+#	roi_imp.hide();
 
 	for zidx in range(egfp_imp.getNSlices()):
 		for chidx in range(3):
-			#print("Working on " + str(["egfp", "mCh", "roi"][chidx]));
 			split_ch[chidx].setZ(zidx+1);
 			split_ch[chidx].setRoi(roi);
 			ip = Straightener().straightenLine(split_ch[chidx], 150);
@@ -254,21 +249,22 @@ def straighten_vessel(imp, smooth_centres, it=1):
 										"] c2=[" + egfp_out_imp.getTitle() + 
 										"] c7=[" + roi_out_imp.getTitle() + "] create keep");
 #	WaitForUserDialog("pause").show();
-	if it==1:
-		egfp_out_imp.close()
-		mch_out_imp.close()
-		roi_out_imp.close()
+#	if it==1:
+	egfp_out_imp.close()
+	mch_out_imp.close()
+	roi_out_imp.close()
 	new_composite = IJ.getImage();
 	FileSaver(new_composite).saveAsTiffStack(os.path.join(output_path, "after rotation " + str(it) + ".tif"));
 	return new_composite;
 
-
-def main():
+def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, output_path=output_path):
+	# todo: fix things so that all operations use a consistent definition of background rather than changing Prefs on the fly...
+	Prefs.blackBackground = False;
 	info = PrescreenInfo();
-	info.load_info_from_json(metadata_test_path);
+	info.load_info_from_json(metadata_path);
 	z_xy_ratio = abs(info.get_z_plane_spacing_um()) / info.get_xy_pixel_size_um();
-	print(z_xy_ratio);
-	bfimp = bf.openImagePlus(im_test_path);
+#	print(z_xy_ratio);
+	bfimp = bf.openImagePlus(im_path);
 	imp = bfimp[0];
 	imp.show();
 	cal = imp.getCalibration();
@@ -365,17 +361,14 @@ def main():
 	
 	composite_imp2 = straighten_vessel(composite_imp, xyz_smooth_centres);
 	composite_imp3 = straighten_vessel(composite_imp2, xyz_smooth_centres, it=2);
-	WaitForUserDialog("pause before close").show();
+	composite_imp2.close();
 	IJ.run(composite_imp3, "Reslice [/]...", "output=1.000 start=Left avoid");
-
-	# TODO - figure out how to relate new z-spacing to original distance along isv
-	# TODO - figure out how best to deal with varying vessel diameter, while maintaining wrapping behaviour...
-	# should we unwrap to l and theta, or l and c (circumferential distance?)
-
-	#IJ.close("*")
+	return IJ.getImage();
 
 #hsimp.addImageListener(UpdateRoiImageListener(rois));
 
+def main():
+	do_tubefitting();
 
 # It's best practice to create a function that contains the code that is executed when running the script.
 # This enables us to stop the script by just calling return.

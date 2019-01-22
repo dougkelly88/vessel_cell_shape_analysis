@@ -1,9 +1,7 @@
-# @ImagePlus imp
 import math, sys, os
 from ij import ImageStack, ImagePlus, IJ, Prefs
 from ij.gui import PolygonRoi, Roi, WaitForUserDialog, Line, ProfilePlot
 from ij.plugin import Duplicator, MontageMaker, ChannelSplitter, ImageCalculator
-#from ij.plugin.filter import MaximumFinder
 from ij.process import FloatProcessor, AutoThresholder
 
 def twist_and_unwrap(imp):
@@ -31,7 +29,7 @@ def twist_and_unwrap(imp):
 	unwrapped_projection_imp = do_unwrap(imp, unwrap_axis);
 	return unwrapped_projection_imp, unwrap_axis;
 
-def do_unwrap(imp, unwrap_axis, colorbar_width=200):
+def do_unwrap(imp, unwrap_axis, colorbar_width=20):
 	"""given an unwrap axis extending from top to bottom of an image, generate an unwrapped image"""
 	# extend to right hand corners...
 	unwrap_poly_xs = [x for x, y in unwrap_axis];
@@ -73,6 +71,8 @@ def do_unwrap(imp, unwrap_axis, colorbar_width=200):
 	
 def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=False):
 	"""perform ray-based projection of vessel wall, c.f. ICY TubeSkinner (Lancino 2018)"""
+	Prefs.blackBackground = True;
+	print("do angular projection input imp = " + str(imp));
 	split_chs = ChannelSplitter().split(imp);
 	mch_imp = split_chs[0];
 	IJ.setAutoThreshold(mch_imp, "IsoData dark stack");
@@ -217,15 +217,12 @@ def calculate_area_and_aspect_ratio(r_imp, mask_imp, raw_voxel_side):
 	widths = [0] * raw_height;
 	fp = r_imp.getProcessor();
 	for point in roi:
-		print(fp.getPixelValue(point.x, point.y));
 		widths[point.y - min_y] = widths[point.y - min_y] + fp.getPixelValue(point.x, point.y) * raw_voxel_side * 2 * math.pi/360;
 	aspect_ratio_circumferential_to_axial = (sum(widths)/len(widths)) / (raw_height * raw_voxel_side);
 	area = sum(widths) * raw_voxel_side;
 	
 	return area, aspect_ratio_circumferential_to_axial;
 	
-	
-
 def do_slicewise_unwrap(imp):
 	"""at each position along the lumen axis, get a shell from around the lumen and take the maximum in the cell channel"""
 	split_chs = ChannelSplitter().split(imp);
@@ -259,18 +256,18 @@ def do_slicewise_unwrap(imp):
 	mask_imp.show();
 	cl_imp.close()
 
-Prefs.blackBackground = True;
+#Prefs.blackBackground = True;
 
-out_imp, _, ring_rois, centres = do_angular_projection(imp, generate_roi_stack=True);
-IJ.setAutoThreshold(out_imp, "Intermodes dark");
-threshold_val = out_imp.getProcessor().getMinThreshold();
-unwrapped_projection_imp, unwrap_axis = twist_and_unwrap(out_imp);
-r_imp, mask_imp = generate_r_image(out_imp, ring_rois, centres, unwrap_axis, threshold_val);
+#out_imp, _, ring_rois, centres = do_angular_projection(imp, generate_roi_stack=True);
+#IJ.setAutoThreshold(out_imp, "Intermodes dark");
+#threshold_val = out_imp.getProcessor().getMinThreshold();
+#unwrapped_projection_imp, unwrap_axis = twist_and_unwrap(out_imp);
+#r_imp, mask_imp = generate_r_image(out_imp, ring_rois, centres, unwrap_axis, threshold_val);
 
-r_imp.show();
-out_imp.close();
-unwrapped_projection_imp.show();
-area, aspect_ratio = calculate_area_and_aspect_ratio(r_imp, mask_imp, 0.108333);
-print("A = " + str(area));
-print("Aspect ratio = " + str(aspect_ratio));
+#r_imp.show();
+#out_imp.close();
+#unwrapped_projection_imp.show();
+#area, aspect_ratio = calculate_area_and_aspect_ratio(r_imp, mask_imp, 0.108333);
+#print("A = " + str(area));
+#print("Aspect ratio = " + str(aspect_ratio));
 
