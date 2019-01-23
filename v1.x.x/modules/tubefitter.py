@@ -37,6 +37,15 @@ import file_io as io
 import ellipse_fitting
 import ui
 
+def rot3d(imp, axis='x'):
+	"""pare back Slicer to implement rotations that return ImagePlus"""
+	if axis=='x':
+		print("rotating around x axis");
+	elif axis=='y':
+		print("rotating arond y axis");
+	else
+		print("nonsense!");
+
 def generate_smoothed_vessel_axis(centres, pixel_size_um=0.1625):
 	"""From a list of fitted vessel centres, generate the vessel path"""
 	smooth_parameter_um = 5.0;
@@ -150,7 +159,13 @@ def split_and_rotate(imp, info):
 	channels  = ChannelSplitter().split(imp);
 	seg_imp = Duplicator().run(channels[seg_ch_idx]); # use Duplicator to decouple - can do smarter to save memory?
 	proj_imp = Duplicator().run(channels[proj_ch_idx]);
+	seg_imp.show();
+	WaitForUserDialog("seg imp").show();
+	seg_imp.hide();
 	rot_seg_imp = Slicer().reslice(seg_imp);
+	rot_seg_imp.show();
+	WaitForUserDialog("rot_seg_imp").show();
+	rot_seg_imp.hide();
 	rot_seg_imp.setTitle("rot_seg_imp");
 	rot_proj_imp = Slicer().reslice(proj_imp);
 	rot_proj_imp.setTitle("rot_proj_imp");
