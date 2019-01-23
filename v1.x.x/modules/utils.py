@@ -3,6 +3,7 @@ from ij.gui import WaitForUserDialog
 from ij.process import FloatProcessor, StackProcessor
 
 def rot_around_x(input_stack):
+	"""do rotation around x axis"""
 	output_slices = input_stack.getHeight();
 	output_width = input_stack.getWidth();
 	output_height = input_stack.getSize();
@@ -38,17 +39,18 @@ def rot3d(imp, axis='x'):
 		new_cal.pixelHeight = original_cal.pixelWidth;
 	else:
 		raise NotImplementedError("Please check which axis you've chosen - if not (x, y, z) than it's not implemented...");
+	imp.changes = False;
 	imp.close();
 	out_imp.setCalibration(new_cal);
 	return out_imp;
 
-path = "C:\\Users\\dougk\\Desktop\\test image.tif";
-imp = IJ.openImage(path);
-imp.show();
-
-axis = 'z'
-out_imp = rot3d(imp, axis=axis);
-out_imp.show();
-WaitForUserDialog("rotated around " + axis).show();
-#out_imp2.close();
-#imp.close();
+#path = "C:\\Users\\dougk\\Desktop\\test image.tif";
+#imp = IJ.openImage(path);
+#imp.show();
+#
+#axis = 'z'
+#out_imp = rot3d(imp, axis=axis);
+#out_imp.show();
+#WaitForUserDialog("rotated around " + axis).show();
+##out_imp2.close();
+##imp.close();

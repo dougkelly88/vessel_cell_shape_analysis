@@ -4,7 +4,7 @@ import math, sys, os
 from ij import IJ, ImageStack, ImagePlus, Prefs
 from ij.gui import EllipseRoi, WaitForUserDialog, Roi, PolygonRoi
 from ij.io import FileSaver
-from ij.plugin import ChannelSplitter, Slicer, HyperStackConverter, ImageCalculator, Duplicator, SubstackMaker, Straightener
+from ij.plugin import ChannelSplitter, HyperStackConverter, ImageCalculator, Duplicator, SubstackMaker, Straightener
 from ij.process import StackProcessor, AutoThresholder, StackStatistics, FloatProcessor
 from ij import WindowManager as WM
 from loci.plugins import BF as bf
@@ -36,15 +36,7 @@ from PrescreenInfo import PrescreenInfo
 import file_io as io
 import ellipse_fitting
 import ui
-
-def rot3d(imp, axis='x'):
-	"""pare back Slicer to implement rotations that return ImagePlus"""
-	if axis=='x':
-		print("rotating around x axis");
-	elif axis=='y':
-		print("rotating arond y axis");
-	else
-		print("nonsense!");
+import utils
 
 def generate_smoothed_vessel_axis(centres, pixel_size_um=0.1625):
 	"""From a list of fitted vessel centres, generate the vessel path"""
@@ -159,15 +151,9 @@ def split_and_rotate(imp, info):
 	channels  = ChannelSplitter().split(imp);
 	seg_imp = Duplicator().run(channels[seg_ch_idx]); # use Duplicator to decouple - can do smarter to save memory?
 	proj_imp = Duplicator().run(channels[proj_ch_idx]);
-	seg_imp.show();
-	WaitForUserDialog("seg imp").show();
-	seg_imp.hide();
-	rot_seg_imp = Slicer().reslice(seg_imp);
-	rot_seg_imp.show();
-	WaitForUserDialog("rot_seg_imp").show();
-	rot_seg_imp.hide();
+	rot_seg_imp = utils.rot3d(seg_imp, axis='x');
 	rot_seg_imp.setTitle("rot_seg_imp");
-	rot_proj_imp = Slicer().reslice(proj_imp);
+	rot_proj_imp = utils.rot3d(proj_imp, axis='x');
 	rot_proj_imp.setTitle("rot_proj_imp");
 	egfp_mch_imps = [];
 	egfp_idx = 0 if "gfp" in info.ch1_label.lower() else 1;
@@ -178,7 +164,7 @@ def split_and_rotate(imp, info):
 		elif ch_idx==proj_ch_idx:
 			egfp_mch_imps.append(Duplicator().run(rot_proj_imp));
 		else:
-			egfp_mch_imps.append(Slicer().reslice(Duplicator().run(channels[ch_idx])));
+			egfp_mch_imps.append(utils.rot3d(Duplicator().run(channels[ch_idx]), axis='x'));
 	imp.changes=False;
 	imp.close();
 	seg_imp.changes = False;
@@ -300,8 +286,7 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 	rois = [];
 	centres = [];
 	major_axes = [];
-	roi_stack = IJ.createImage("rois", width, height, depth, 16);
-	#roi_stack = IJ.createImage("rois", rot_imp.getWidth(), rot_imp.getHeight(), rot_imp.getNSlices(), 16);
+	roi_stack = IJ.createImage("rois", width, height, depth, 32);
 	pts_stack = ImageStack(width, height+1);
 	IJ.run(imp, "Line Width...", "line=3");
 	for zidx in range(fit_basis_imp.getNSlices()):
