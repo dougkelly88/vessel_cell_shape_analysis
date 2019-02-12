@@ -1,6 +1,7 @@
 from ij import ImagePlus, IJ, ImageStack
 from ij.gui import WaitForUserDialog
 from ij.process import FloatProcessor, StackProcessor
+from ij.plugin import ChannelSplitter, RGBStackMerge
 
 def rot_around_x(input_stack):
 	"""do rotation around x axis"""
@@ -16,41 +17,56 @@ def rot3d(imp, axis='x'):
 	"""pare back Slicer to implement whole-image, +90* rotations that return ImagePlus"""
 	if imp.getType()==ImagePlus.COLOR_256 or imp.getType()==ImagePlus.COLOR_RGB:
 		raise NotImplementedError("Handling of colour images isn't implemented yet");
+
 	title = imp.getTitle();
 	original_cal = imp.getCalibration();
 	new_cal = original_cal;
+	
+	if imp.getNChannels > 1:
+		split_ch = ChannelSplitter().split(imp);
+	else:
+		split_ch = [imp];
+
+	out_imps = [];
 	if axis=='x':
-		input_stack = imp.getStack();
-		output_stack = rot_around_x(input_stack);
-		out_imp = ImagePlus(title, output_stack);
-		new_cal.pixelHeight = original_cal.pixelDepth;
-		new_cal.pixelDepth = original_cal.pixelHeight;
+		for ch_imp in split_ch:
+			input_stack = ch_imp.getStack();
+			output_stack = rot_around_x(input_stack);
+			out_imps.append(ImagePlus(title, output_stack));
+			new_cal.pixelHeight = original_cal.pixelDepth;
+			new_cal.pixelDepth = original_cal.pixelHeight;
 	elif axis=='y':
-		input_stack = StackProcessor(imp.getStack()).rotateRight();
-		output_stack = rot_around_x(input_stack);
-		final_stack = StackProcessor(output_stack).rotateRight();
-		out_imp = ImagePlus(title, final_stack);
-		new_cal.pixelWidth = original_cal.pixelDepth;
-		new_cal.pixelDepth = original_cal.pixelWidth;
+		for ch_imp in split_ch:
+			input_stack = StackProcessor(ch_imp.getStack()).rotateRight();
+			output_stack = rot_around_x(input_stack);
+			final_stack = StackProcessor(output_stack).rotateRight();
+			out_imps.append(ImagePlus(title, final_stack));
+			new_cal.pixelWidth = original_cal.pixelDepth;
+			new_cal.pixelDepth = original_cal.pixelWidth;
 	elif axis=='z':
-		output_stack = StackProcessor(imp.getStack()).rotateRight();
-		out_imp = ImagePlus(title, output_stack);
-		new_cal.pixelWidth = original_cal.pixelHeight;
-		new_cal.pixelHeight = original_cal.pixelWidth;
+		for ch_imp in split_ch:
+			output_stack = StackProcessor(ch_imp.getStack()).rotateRight();
+			out_imps.append(ImagePlus(title, output_stack));
+			new_cal.pixelWidth = original_cal.pixelHeight;
+			new_cal.pixelHeight = original_cal.pixelWidth;
 	else:
 		raise NotImplementedError("Please check which axis you've chosen - if not (x, y, z) than it's not implemented...");
 	imp.changes = False;
 	imp.close();
+	if len(out_imps) > 1:
+		out_imp = RGBStackMerge().mergeChannels(out_imps, False);
+	else:
+		out_imp = out_imps[0];
 	out_imp.setCalibration(new_cal);
 	return out_imp;
 
-#path = "C:\\Users\\dougk\\Desktop\\test image.tif";
+#path = "C:\\Users\\dougk\\Desktop\\test image 2.tif";
 #imp = IJ.openImage(path);
 #imp.show();
 #
-#axis = 'z'
+#axis = 'x'
 #out_imp = rot3d(imp, axis=axis);
 #out_imp.show();
 #WaitForUserDialog("rotated around " + axis).show();
-##out_imp2.close();
-##imp.close();
+#out_imp2.close();
+#imp.close();
