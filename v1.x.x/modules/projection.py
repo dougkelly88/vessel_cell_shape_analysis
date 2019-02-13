@@ -4,8 +4,8 @@ from ij.gui import PolygonRoi, Roi, WaitForUserDialog, Line, ProfilePlot
 from ij.plugin import Duplicator, MontageMaker, ChannelSplitter, ImageCalculator
 from ij.process import FloatProcessor, AutoThresholder
 
-def twist_and_unwrap(imp):
-	"""from the output of angular projection, define an axis along which to unzip the vessel and return this unzipped image"""
+def make_tiled_imp(imp):
+	"""generate a ImageProcessor that is the input tiled 3 time horizontally"""
 	ip = imp.getProcessor();
 	stack = ImageStack(imp.getWidth(), imp.getHeight());
 	for idx in range(3):
@@ -13,6 +13,11 @@ def twist_and_unwrap(imp):
 	temp_imp = ImagePlus("temp", stack);
 	tile_imp = MontageMaker().makeMontage2(temp_imp, 3, 1, 1, 1, 3, 1, 0, False);
 	temp_imp.close();
+	return tile_imp;
+
+def twist_and_unwrap(imp):
+	"""from the output of angular projection, define an axis along which to unzip the vessel and return this unzipped image"""
+	tile_imp = make_tiled_imp(imp);
 	tile_imp.show();
 	IJ.setTool("freeline");
 	WaitForUserDialog("Input required...", "Please draw the line down which unwrapping should occur...").show();
@@ -33,10 +38,10 @@ def twist_and_unwrap(imp):
 		unwrap_poly_ys.append(1);
 	unwrap_axis = [(x, y) for (x, y) in zip(unwrap_poly_xs, unwrap_poly_ys)];
 	
-	unwrapped_projection_imp = do_unwrap(tile_imp, unwrap_axis);
+	unwrapped_projection_imp = do_unwrap(tile_imp, unwrap_axis, imp_title=imp.getTitle());
 	return unwrapped_projection_imp, unwrap_axis;
 
-def do_unwrap(tile_imp, unwrap_axis, colorbar_width=20):
+def do_unwrap(tile_imp, unwrap_axis, imp_title=None):
 	"""given an unwrap axis extending from top to bottom of an image, generate an unwrapped image"""
 	ip = tile_imp.getProcessor();
 	ip.setValue(0);
@@ -64,7 +69,10 @@ def do_unwrap(tile_imp, unwrap_axis, colorbar_width=20):
 	ip = ip.crop();
 	tile_imp.setProcessor(ip);
 	tile_imp.updateAndRepaintWindow();
-	tile_imp.setTitle("twisted and unwrapped")
+	if imp_title is not None:
+		tile_imp.setTitle("{}, twisted and unwrapped".format(imp_title));
+	else:
+		tile_imp.setTitle("twisted and unwrapped")
 	return tile_imp;
 	
 def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=False):
@@ -179,15 +187,19 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val):
 	bp.erode();
 
 	mask_imp = ImagePlus("Mask", bp);
-#	mask_imp.show();
-#	WaitForUserDialog("pasue - generated mask").show();
-	mask_imp = do_unwrap(mask_imp, unwrap_axis);
-#	WaitForUserDialog("pasue - unwrapped").show();
+	tile_mask = make_tiled_imp(mask_imp);
+	#tile_mask.show();
+	#WaitForUserDialog("pasue - generated mask").show();
+	mask_imp = do_unwrap(tile_mask, unwrap_axis, imp_title=mask_imp.getTitle());
+	#mask_imp.show();
+	roi = PolygonRoi([x for (x, y) in unwrap_axis], [y for (x, y) in unwrap_axis], PolygonRoi.POLYLINE);
+	mask_imp.setRoi(roi);
+	#WaitForUserDialog("pasue - unwrapped").show();
 	IJ.run(mask_imp, "Fill Holes", "");
-#	WaitForUserDialog("pasue - filled holes").show();
+	#WaitForUserDialog("pasue - filled holes").show();
 	IJ.run(mask_imp, "Divide...", "value=255");
-#	WaitForUserDialog("pasue - scaled to 0-1").show();
-#	mask_imp.show();
+	#WaitForUserDialog("pasue - scaled to 0-1").show();
+	#mask_imp.show();
 
 	r_list = [];
 	for lidx, (roi, centre) in enumerate(zip(ring_rois, centres)):
@@ -195,7 +207,8 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val):
 		r_list.append(r_sublist);
 		
 	r_imp = ImagePlus("Radii", FloatProcessor([list(x) for x in zip(*r_list)]));
-	r_imp = do_unwrap(r_imp, unwrap_axis);
+	tile_r_imp = make_tiled_imp(r_imp);
+	r_imp = do_unwrap(tile_r_imp, unwrap_axis, imp_title=r_imp.getTitle());
 	r_imp = ImageCalculator().run("Multiply create", r_imp, mask_imp);
 	IJ.run(r_imp, "Cyan Hot", "");
 	
