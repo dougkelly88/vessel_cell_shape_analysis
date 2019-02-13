@@ -4,7 +4,7 @@ import math, sys, os
 from ij import IJ, ImageStack, ImagePlus, Prefs
 from ij.gui import EllipseRoi, WaitForUserDialog, Roi, PolygonRoi
 from ij.io import FileSaver
-from ij.plugin import ChannelSplitter, HyperStackConverter, ImageCalculator, Duplicator, SubstackMaker, Straightener
+from ij.plugin import ChannelSplitter, ImageCalculator, Duplicator, SubstackMaker, Straightener
 from ij.process import StackProcessor, AutoThresholder, StackStatistics, FloatProcessor
 from ij import WindowManager as WM
 from loci.plugins import BF as bf
@@ -191,37 +191,21 @@ def lin_interp_1d(old_x, old_y, new_x):
 def straighten_vessel(imp, smooth_centres, it=1):
 	"""use IJ straigtening tool to deal with convoluted vessels"""
 	print("straighten vessel input image dims = " + str(imp.getWidth()) + "x" + str(imp.getHeight()));
-	
-	IJ.run(imp, "Reslice [/]...", "output=1.000 start=Top avoid");
-	rot_imp = IJ.getImage();
+	rot_imp = utils.rot3d(imp, axis='x');
 	if it==1:
 		roi = PolygonRoi([x for x, y, z in smooth_centres], [z for x, y, z in smooth_centres], Roi.FREELINE);
 		print("len interp polygon = " + str(roi.getInterpolatedPolygon().npoints));
 	elif it==2:
 		new_zs = [z for z in range(rot_imp.getWidth())];
 		new_ys = lin_interp_1d([z for x, y, z in smooth_centres], [y for x, y, z in smooth_centres], new_zs);
-		#roi = PolygonRoi([z for x, y, z in smooth_centres], [y for x, y, z in smooth_centres], Roi.FREELINE);
 		roi = PolygonRoi(new_zs, new_ys, Roi.FREELINE);
-#		roi = PolygonRoi([x for x in range(rot_imp.getWidth())], 
-#						[z for z in roi.getInterpolatedPolygon(1.0, False).ypoints], 
-#						Roi.FREELINE);
 	
-	
-	imp.changes = False;
-	print(imp.getTitle());
-	imp.close();
-	#rot_imp.setRoi(roi);
-	rot_imp.setTitle("Composite");
 	split_ch = ChannelSplitter().split(rot_imp);
 	mch_imp = split_ch[0];
 	egfp_imp = split_ch[1];
 	roi_imp = split_ch[2];
 
-#	roi_imp.show();
 	roi_imp.setRoi(roi);
-
-#	WaitForUserDialog("pause").show();
-#	roi_imp.hide();
 
 	for zidx in range(egfp_imp.getNSlices()):
 		for chidx in range(3):
@@ -244,6 +228,10 @@ def straighten_vessel(imp, smooth_centres, it=1):
 	egfp_out_imp = ImagePlus("Straightened EGFP", egfp_straight_stack);
 	mch_out_imp = ImagePlus("Straightened mCh", mch_straight_stack);
 	roi_out_imp = ImagePlus("Straightened ROI", roi_straight_stack);
+	if it==2: 
+		egfp_out_imp = utils.rot3d(egfp_out_imp, axis='y');
+		mch_out_imp = utils.rot3d(mch_out_imp, axis='y');
+		roi_out_imp = utils.rot3d(roi_out_imp, axis='y');
 	egfp_out_imp.show();
 	mch_out_imp.show();
 	roi_out_imp.show();
@@ -265,7 +253,6 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 	info = PrescreenInfo();
 	info.load_info_from_json(metadata_path);
 	z_xy_ratio = abs(info.get_z_plane_spacing_um()) / info.get_xy_pixel_size_um();
-#	print(z_xy_ratio);
 	bfimp = bf.openImagePlus(im_path);
 	imp = bfimp[0];
 	imp.show();
@@ -362,9 +349,7 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 	
 	composite_imp2 = straighten_vessel(composite_imp, xyz_smooth_centres);
 	composite_imp3 = straighten_vessel(composite_imp2, xyz_smooth_centres, it=2);
-	composite_imp2.close();
-	IJ.run(composite_imp3, "Reslice [/]...", "output=1.000 start=Left avoid");
-	return IJ.getImage();
+	return composite_imp3;
 
 #hsimp.addImageListener(UpdateRoiImageListener(rois));
 
