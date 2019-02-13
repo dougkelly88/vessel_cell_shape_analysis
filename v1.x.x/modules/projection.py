@@ -6,10 +6,17 @@ from ij.process import FloatProcessor, AutoThresholder
 
 def twist_and_unwrap(imp):
 	"""from the output of angular projection, define an axis along which to unzip the vessel and return this unzipped image"""
-	imp.show();
+	ip = imp.getProcessor();
+	stack = ImageStack(imp.getWidth(), imp.getHeight());
+	for idx in range(3):
+		stack.addSlice(ip);
+	temp_imp = ImagePlus("temp", stack);
+	tile_imp = MontageMaker().makeMontage2(temp_imp, 3, 1, 1, 1, 3, 1, 0, False);
+	temp_imp.close();
+	tile_imp.show();
 	IJ.setTool("freeline");
 	WaitForUserDialog("Input required...", "Please draw the line down which unwrapping should occur...").show();
-	roi = imp.getRoi();
+	roi = tile_imp.getRoi();
 	if roi is None:
 		raise ValueError;
 	unwrap_poly = roi.getPolygon();
@@ -26,48 +33,39 @@ def twist_and_unwrap(imp):
 		unwrap_poly_ys.append(1);
 	unwrap_axis = [(x, y) for (x, y) in zip(unwrap_poly_xs, unwrap_poly_ys)];
 	
-	unwrapped_projection_imp = do_unwrap(imp, unwrap_axis);
+	unwrapped_projection_imp = do_unwrap(tile_imp, unwrap_axis);
 	return unwrapped_projection_imp, unwrap_axis;
 
-def do_unwrap(imp, unwrap_axis, colorbar_width=20):
+def do_unwrap(tile_imp, unwrap_axis, colorbar_width=20):
 	"""given an unwrap axis extending from top to bottom of an image, generate an unwrapped image"""
-	# extend to right hand corners...
+	ip = tile_imp.getProcessor();
+	ip.setValue(0);
 	unwrap_poly_xs = [x for x, y in unwrap_axis];
 	unwrap_poly_ys = [y for x, y in unwrap_axis];
-	unwrap_poly_xs.append(imp.getWidth());
-	unwrap_poly_xs.append(imp.getWidth());
+	if sum(unwrap_poly_xs)/len(unwrap_poly_xs) > 1.5 * 360:
+		rhs_poly_xs = unwrap_poly_xs;
+	else:
+		rhs_poly_xs = [x + 360 for x in unwrap_poly_xs];
+	for _ in range(2):
+		rhs_poly_xs.append(0);
 	unwrap_poly_ys.append(unwrap_poly_ys[-1]);
 	unwrap_poly_ys.append(unwrap_poly_ys[0]);
-	unwrap_roi = PolygonRoi(unwrap_poly_xs, unwrap_poly_ys, Roi.POLYGON);
-
-	input_title = imp.getTitle();
-	unwrap_imp = IJ.createImage("unwrap", imp.getWidth(), imp.getHeight(), 2, imp.getBitDepth());
-	left_crop = unwrap_roi.getBoundingRect().x;
-	dummy = Duplicator().run(imp);
-	dummy.setRoi(unwrap_roi);
-	IJ.run(dummy, "Make Inverse", "");
-	IJ.run(dummy, "Set...", "value=0");
-	ip = dummy.getProcessor();
-	unwrap_imp.setProcessor(ip);
-	dummy.close();
-	unwrap_imp.setZ(2);
-	dummy = Duplicator().run(imp);
-	dummy.setRoi(unwrap_roi);
-	IJ.run(dummy, "Set...", "value=0");
-	ip = dummy.getProcessor();
-	unwrap_imp.setProcessor(ip);
-	dummy.close();
-	tile_imp = MontageMaker().makeMontage2(unwrap_imp, 2, 1, 1, 1, 2, 1, 0, False);
-	# do thresholding/binarisation/profile plot to work out where to crop tight? otherwise...
-	crop_roi = Roi(left_crop, 1, tile_imp.getWidth() - left_crop + colorbar_width, unwrap_imp.getHeight());
-	unwrap_imp.close()
-	tile_imp.setRoi(crop_roi);
-	final_imp = tile_imp.crop();
-	tile_imp.close()
-	final_imp.setTitle(input_title + " twisted and unwrapped")
-#	final_imp.show();
-	return final_imp;
-
+	crop_roi = PolygonRoi(rhs_poly_xs, unwrap_poly_ys, Roi.POLYGON);
+	ip.fillOutside(crop_roi);
+	ip.setRoi(crop_roi);
+	ip = ip.crop();
+	ip.setValue(0);
+	lhs_poly_xs = [x - 360 for x in rhs_poly_xs[:-2]];
+	for _ in range(2):
+		lhs_poly_xs.append(ip.getWidth());
+	crop_roi = PolygonRoi(lhs_poly_xs, unwrap_poly_ys, Roi.POLYGON);
+	ip.fillOutside(crop_roi);
+	ip.setRoi(crop_roi);
+	ip = ip.crop();
+	tile_imp.setProcessor(ip);
+	tile_imp.updateAndRepaintWindow();
+	tile_imp.setTitle("twisted and unwrapped")
+	return tile_imp;
 	
 def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=False):
 	"""perform ray-based projection of vessel wall, c.f. ICY TubeSkinner (Lancino 2018)"""
@@ -270,4 +268,24 @@ def do_slicewise_unwrap(imp):
 #area, aspect_ratio = calculate_area_and_aspect_ratio(r_imp, mask_imp, 0.108333);
 #print("A = " + str(area));
 #print("Aspect ratio = " + str(aspect_ratio));
-
+#
+#test_path = "C:\\Users\\dougk\\Desktop\\tile_imp_test.tif";
+#tile_imp = IJ.openImage(test_path);
+#tile_imp.show();
+#IJ.setTool("freeline");
+#WaitForUserDialog("draw line").show();
+#roi  = tile_imp.getRoi();
+#unwrap_poly = roi.getPolygon();
+#unwrap_poly_xs = [x for x in unwrap_poly.xpoints];
+#unwrap_poly_ys = [y for y in unwrap_poly.ypoints];
+## extend to the top and bottom of the image:
+#unwrap_poly_xs.insert(0, unwrap_poly_xs[0]);
+#unwrap_poly_xs.append(unwrap_poly_xs[-1])
+#if unwrap_poly_ys[0] < unwrap_poly_ys[-1]:
+#	unwrap_poly_ys.insert(0, 1);
+#	unwrap_poly_ys.append(tile_imp.getHeight());
+#else:
+#	unwrap_poly_ys.insert(0, tile_imp.getHeight());
+#	unwrap_poly_ys.append(1);
+#unwrap_axis = [(x, y) for (x, y) in zip(unwrap_poly_xs, unwrap_poly_ys)];
+#out_imp = do_unwrap(tile_imp, unwrap_axis)
