@@ -43,7 +43,7 @@ IJ.setAutoThreshold(out_imp, "Intermodes dark");
 threshold_val = out_imp.getProcessor().getMinThreshold();
 unwrapped_projection_imp, unwrap_axis = prj.twist_and_unwrap(out_imp);
 t2 = datetime.now();
-print("done unwrapping is {} s. ".format(round(0.001*(t2.getTime() - t1.getTime()))));
+print("done unwrapping in {} s. ".format(round(0.001*(t2.getTime() - t1.getTime()))));
 print("start generation of image colormapped by radius...");
 t1 = datetime.now();
 r_imp, mask_imp = prj.generate_r_image(out_imp, ring_rois, centres, unwrap_axis, threshold_val);
