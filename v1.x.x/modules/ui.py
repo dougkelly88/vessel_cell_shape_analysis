@@ -2,10 +2,10 @@
 #
 # D. J. Kelly, 2019-01-11, douglas.kelly@riken.jp
 
-from ij.gui import GenericDialog
+from ij.gui import NonBlockingGenericDialog
 
 def choose_segmentation_and_projection_channels(info):
-	dialog = GenericDialog("Select channels...");
+	dialog = NonBlockingGenericDialog("Select channels...");
 	channels = [info.ch1_label, info.ch2_label];
 	dialog.addRadioButtonGroup("Segmentation channel: ", 
 							channels,

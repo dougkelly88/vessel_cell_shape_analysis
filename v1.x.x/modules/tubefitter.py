@@ -147,6 +147,7 @@ def convex_hull_pts(pts):
 def split_and_rotate(imp, info):
 	"""return image to segment on, image to project out, and images to display"""
 	# for now, assume that these are ISVs and that embryo is mounted in familiar fashion. First of these can be developed out...
+	IJ.run("Enhance Contrast", "saturated=0.35");
 	seg_ch_idx, proj_ch_idx = ui.choose_segmentation_and_projection_channels(info);
 	channels  = ChannelSplitter().split(imp);
 	seg_imp = Duplicator().run(channels[seg_ch_idx]); # use Duplicator to decouple - can do smarter to save memory?
