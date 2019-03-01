@@ -75,7 +75,7 @@ def do_unwrap(tile_imp, unwrap_axis, imp_title=None):
 		tile_imp.setTitle("twisted and unwrapped")
 	return tile_imp;
 	
-def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=False):
+def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=True):
 	"""perform ray-based projection of vessel wall, c.f. ICY TubeSkinner (Lancino 2018)"""
 	Prefs.blackBackground = True;
 	print("do angular projection input imp = " + str(imp));
@@ -211,7 +211,7 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val):
 	r_imp = do_unwrap(tile_r_imp, unwrap_axis, imp_title=r_imp.getTitle());
 	r_imp = ImageCalculator().run("Multiply create", r_imp, mask_imp);
 	IJ.run(r_imp, "Cyan Hot", "");
-	
+
 	return r_imp, mask_imp;
 
 def calculate_area_and_aspect_ratio(r_imp, mask_imp, raw_voxel_side):
