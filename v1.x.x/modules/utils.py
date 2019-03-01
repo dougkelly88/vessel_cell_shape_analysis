@@ -211,10 +211,14 @@ def threshold_and_binarise(imp):
 #	IJ.run("3D Fill Holes", "");
 	return fit_basis_imp;
 
-def robust_convertStackToGray8(imp):
+def robust_convertStackToGrayX(imp, x=8):
 	"""simplified from https://github.com/imagej/imagej1/blob/master/ij/process/StackConverter.java, 
 	avoiding complications of scaling based on LUT taken from the current frame. Assumes conversion
-	from 16/32 bit mono image"""
+	from grayscale image"""
+	if x!=8 and x!=16 and x!=32:
+		raise NotImplementedError("can't convert to the specified bit depth");
+	if imp.getBitDepth()==x:
+		return imp;
 	current_slice = imp.getCurrentSlice();
 	stack = imp.getStack();
 	out_stack = ImageStack(imp.getWidth(), imp.getHeight());
@@ -225,10 +229,15 @@ def robust_convertStackToGray8(imp):
 		label = stack.getSliceLabel(1);
 		ip = stack.getProcessor(1);
 		stack.deleteSlice(1);
-		out_stack.addSlice(label, ip.convertToByte(False))
+		if x==8:
+			out_stack.addSlice(label, ip.convertToByte(False));
+		elif x==16:
+			out_stack.addSlice(label, ip.convertToShort(False));
+		elif x==32:
+			out_stack.addSlice(label, ip.convertToFloat());
 		IJ.showProgress(float(idx)/n_z);
 		if idx%progress_inc==0:
-			IJ.showStatus("Converting stack to 8-bits: {}/{}".format(idx, n_z));
+			IJ.showStatus("Converting stack to {}-bits: {}/{}".format(x, idx, n_z));
 	imp.setStack(out_stack);
 	IJ.showProgress(1.0);
 	imp.setSlice(current_slice);
