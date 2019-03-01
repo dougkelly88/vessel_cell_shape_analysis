@@ -129,16 +129,27 @@ def cross_planes_approx_median_filter(stack_imp, filter_radius_um=5.0):
 	output_imp.setTitle("Cross-plane median filtered {} (r={} um)".format(title, filter_radius_um).replace(".tif", ""));
 	return output_imp;
 
-def downsample_for_isotropy(imp, extra_downsample_factor=2.0):
+def downsample_for_isotropy(imp, extra_downsample_factor=2.0, info=None):
 	"""downsample x, y pixel directions to get cubic voxels"""
 	title = imp.getTitle();
 	cal = imp.getCalibration();
-	pix_w = cal.pixelWidth;
-	pix_h = cal.pixelHeight;
-	pix_d = cal.pixelDepth;
+	if info is None:
+		pix_w = cal.pixelWidth;
+		pix_h = cal.pixelHeight;
+		pix_d = cal.pixelDepth;
+	else:
+		pix_w = info.get_xy_pixel_size_um();
+		pix_h = pix_w;
+		pix_d = info.get_z_plane_spacing_um();
+		print("pixel whd = ({}, {}, {}".format(pix_w, pix_h, pix_d));
 	im_w = imp.getWidth();
 	im_h = imp.getHeight();
 	im_d = imp.getNSlices();
+	im_nch = imp.getNChannels();
+	if im_nch > 1:
+		split_ch = ChannelSplitter().split(imp);
+	else:
+		split_ch = [imp];
 	print("downsampling {} and making isotropic...".format(title));
 	IJ.showStatus("Downsampling and making ~isotropic...");
 	xy_scale = pix_h / (pix_d * extra_downsample_factor);
@@ -146,19 +157,29 @@ def downsample_for_isotropy(imp, extra_downsample_factor=2.0):
 	xy_scaled_w = int(xy_scale * im_w);
 	z_scale = 1/ extra_downsample_factor;
 	z_scaled_h = int(z_scale * im_d);
-	sp = StackProcessor(imp.getStack());
-	stack = sp.resize(xy_scaled_w, xy_scaled_h, True);
-	xz_stack = rot_around_x(stack);
-	xz_sp = StackProcessor(xz_stack);
-	xz_stack = xz_sp.resize(xy_scaled_w, z_scaled_h, True);
-	out_stack = rot_around_x(xz_stack);
+	out_imps = [];
+	for ch_imp in split_ch:
+		print(ch_imp.getTitle());
+		sp = StackProcessor(ch_imp.getStack());
+		print((xy_scaled_w, xy_scaled_h));
+		stack = sp.resize(xy_scaled_w, xy_scaled_h, True);
+		xz_stack = rot_around_x(stack);
+		xz_sp = StackProcessor(xz_stack);
+		xz_stack = xz_sp.resize(xy_scaled_w, z_scaled_h, True);
+		out_stack = rot_around_x(xz_stack);
+		out_imps.append(ImagePlus("Isotropic downsampled {}".format(title), out_stack));
 	cal.setUnit('um');
-	cal.pixelWidth = im_w * pix_w/xy_scaled_w;
-	cal.pixelHeight = im_h * pix_h/xy_scaled_w;
-	cal.pixelDepth = im_d * pix_d/z_scaled_h;
+	cal.pixelWidth = im_w/xy_scaled_w * pix_w;
+	cal.pixelHeight = im_h/xy_scaled_h * pix_h;
+	cal.pixelDepth = im_d/z_scaled_h * pix_d;
 	imp.changes = False;
 	imp.close();
-	out_imp = ImagePlus("Isotropic downsampled {}".format(title), out_stack);
+	for ch_imp in split_ch:
+		ch_imp.close();
+	if len(out_imps) > 1:
+		out_imp = RGBStackMerge().mergeChannels(out_imps, False);
+	else:
+		out_imp = out_imps[0];
 	out_imp.setCalibration(cal);
 	print("...done downsampling {} and making isotropic. ".format(title));
 	IJ.showStatus("...done downsampling and making ~isotropic. ");
