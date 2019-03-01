@@ -4,7 +4,7 @@ import math, sys, os
 from ij import IJ, ImageStack, ImagePlus, Prefs
 from ij.gui import EllipseRoi, WaitForUserDialog, Roi, PolygonRoi
 from ij.io import FileSaver
-from ij.plugin import ChannelSplitter, ImageCalculator, Duplicator, SubstackMaker, Straightener
+from ij.plugin import ChannelSplitter, ImageCalculator, Duplicator, SubstackMaker, Straightener, RGBStackMerge
 from ij.process import StackProcessor, AutoThresholder, StackStatistics, FloatProcessor
 from ij import WindowManager as WM
 from loci.plugins import BF as bf
@@ -38,9 +38,8 @@ import ellipse_fitting
 import ui
 import utils
 
-def generate_smoothed_vessel_axis(centres, pixel_size_um=0.1625):
+def generate_smoothed_vessel_axis(centres, pixel_size_um=0.1625, smooth_parameter_um=5.0):
 	"""From a list of fitted vessel centres, generate the vessel path"""
-	smooth_parameter_um = 5.0;
 	out_centres = [];
 	tangent_vectors = [];
 	smooth_planes = smooth_parameter_um/pixel_size_um;
@@ -57,19 +56,23 @@ def generate_smoothed_vessel_axis(centres, pixel_size_um=0.1625):
 	tangent_vectors.insert(0, tangent_vectors[0]);
 	return out_centres, tangent_vectors;
 
-def threshold_and_binarise(imp, z_xy_ratio):
+def threshold_and_binarise(imp, z_xy_ratio, approx_median=True, prune_slicewise=True):
 	"""Return thresholded stack"""
 	print("performing segmentation on channel: " + imp.getTitle());
-	filter_radius = 3.0;
-	IJ.run(imp, "Median 3D...", "x=" + str(filter_radius) + " y=" + str(math.ceil(filter_radius / z_xy_ratio)) + " z=" + str(filter_radius));
-	IJ.run(imp, "8-bit", "");
+	if approx_median:
+		imp = utils.cross_planes_approx_median_filter(imp);
+		imp = utils.robust_convertStackToGrayXbit(imp, x=8, normalise=True);
+	else:
+		filter_radius = 3.0;
+		IJ.run(imp, "Median 3D...", "x=" + str(filter_radius) + " y=" + str(math.ceil(filter_radius / z_xy_ratio)) + " z=" + str(filter_radius));
+		IJ.run(imp, "8-bit", "");
 	imp.show();
 
 	# Apply automatic THRESHOLD to differentiate cells from background
 	# get threshold value from stack histogram using otsu
 	histo = StackStatistics(imp).histogram;
-	#thresh_lev = AutoThresholder().getThreshold(AutoThresholder.Method.IJ_IsoData, histo);
-	thresh_lev = AutoThresholder().getThreshold(AutoThresholder.Method.Otsu, histo);
+	thresh_lev = AutoThresholder().getThreshold(AutoThresholder.Method.IJ_IsoData, histo);
+	#thresh_lev = AutoThresholder().getThreshold(AutoThresholder.Method.Otsu, histo);
 	max_voxel_volume = int(float(imp.getHeight() * imp.getWidth() * imp.getNSlices())/100);
 	IJ.run(imp, "3D Simple Segmentation", "low_threshold=" + str(thresh_lev + 1) + 
 												" min_size=" + str(max_voxel_volume) + " max_size=-1");
@@ -81,6 +84,8 @@ def threshold_and_binarise(imp, z_xy_ratio):
 	IJ.run(fit_basis_imp, "Convert to Mask", "method=Default background=Dark list");
 	#IJ.run(fit_basis_imp, "Fill Holes", "stack");
 	IJ.run("3D Fill Holes", "");
+	if prune_slicewise:
+		fit_basis_imp = utils.keep_largest_blob(fit_basis_imp); # note this will be unstable if "branches" of approx equal x-section exist
 	return fit_basis_imp;
 
 def combine_two_channel_segments(imp1, imp2, binary_imp1, binary_imp2):
@@ -147,7 +152,8 @@ def convex_hull_pts(pts):
 def split_and_rotate(imp, info):
 	"""return image to segment on, image to project out, and images to display"""
 	# for now, assume that these are ISVs and that embryo is mounted in familiar fashion. First of these can be developed out...
-	IJ.run("Enhance Contrast", "saturated=0.35");
+	if imp.isVisible():
+		IJ.run("Enhance Contrast", "saturated=0.35");
 	seg_ch_idx, proj_ch_idx = ui.choose_segmentation_and_projection_channels(info);
 	channels  = ChannelSplitter().split(imp);
 	seg_imp = Duplicator().run(channels[seg_ch_idx]); # use Duplicator to decouple - can do smarter to save memory?
@@ -188,7 +194,7 @@ def lin_interp_1d(old_x, old_y, new_x):
 	new_y.append(old_y[-1]);
 	return new_y;
 	
-def straighten_vessel(imp, smooth_centres, it=1):
+def straighten_vessel(imp, smooth_centres, it=1, save_output=False):
 	"""use IJ straigtening tool to deal with convoluted vessels"""
 	print("straighten vessel input image dims = " + str(imp.getWidth()) + "x" + str(imp.getHeight()));
 	rot_imp = utils.rot3d(imp, axis='x');
@@ -244,10 +250,11 @@ def straighten_vessel(imp, smooth_centres, it=1):
 	mch_out_imp.close()
 	roi_out_imp.close()
 	new_composite = IJ.getImage();
-	FileSaver(new_composite).saveAsTiffStack(os.path.join(output_path, "after rotation " + str(it) + ".tif"));
+	if save_output:
+		FileSaver(new_composite).saveAsTiffStack(os.path.join(output_path, "after rotation " + str(it) + ".tif"));
 	return new_composite;
 
-def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, output_path=output_path):
+def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, output_path=output_path, save_output=False):
 	# todo: fix things so that all operations use a consistent definition of background rather than changing Prefs on the fly...
 	Prefs.blackBackground = False;
 	info = PrescreenInfo();
@@ -256,9 +263,8 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 	bfimp = bf.openImagePlus(im_path);
 	imp = bfimp[0];
 	imp.show();
-	cal = imp.getCalibration();
 	IJ.run(imp, "Set Scale...", "distance=0 known=0 pixel=1 unit=pixel");
-
+	imp = utils.downsample_for_isotropy(imp, extra_downsample_factor=1.0, info=info);
 	rot_seg_imp, rot_proj_imp, egfp_mch_imps = split_and_rotate(imp, info);
 	depth = rot_seg_imp.getNSlices() if rot_seg_imp.getNSlices() > rot_seg_imp.getNFrames() else rot_seg_imp.getNFrames();
 	width = rot_seg_imp.getWidth();
@@ -274,7 +280,7 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 	rois = [];
 	centres = [];
 	major_axes = [];
-	roi_stack = IJ.createImage("rois", width, height, depth, 32);
+	roi_imp = IJ.createImage("rois", width, height, depth, 32);
 	pts_stack = ImageStack(width, height+1);
 	IJ.run(imp, "Line Width...", "line=3");
 	for zidx in range(fit_basis_imp.getNSlices()):
@@ -299,15 +305,15 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 		ellipse_roi = ellipse_fitting.generate_ellipse_roi(centre, angle, axl);
 		rois.append(ellipse_roi);
 	IJ.run(imp, "Line Width...", "line=1");
-
-	smooth_centres, tangent_vecs =  generate_smoothed_vessel_axis(centres, pixel_size_um=info.get_xy_pixel_size_um());
+	cal = imp.getCalibration();
+	smooth_centres, tangent_vecs =  generate_smoothed_vessel_axis(centres, pixel_size_um=cal.pixelDepth);
 	for zidx in range(fit_basis_imp.getNSlices()):
 		centre = smooth_centres[zidx];
 		major_axis = major_axes[zidx];
 		ellipse_roi = EllipseRoi(centre[0]-2, centre[1], centre[0]+2, centre[1], 1.0);
-		roi_stack.setZ(zidx+1);
-		roi_stack.setRoi(ellipse_roi);
-		IJ.run(roi_stack, "Set...", "value=" + str(roi_stack.getProcessor().maxValue()) + " slice");
+		roi_imp.setZ(zidx+1);
+		roi_imp.setRoi(ellipse_roi);
+		IJ.run(roi_imp, "Set...", "value=" + str(roi_imp.getProcessor().maxValue()) + " slice");
 
 	pts_stack_imp = ImagePlus("Cleaned points", pts_stack);
 	pts_stack_imp.setTitle("pts_stack_imp");
@@ -317,38 +323,43 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 	rot_seg_imp.close();
 	egfp_imp = egfp_mch_imps[0];
 	mch_imp = egfp_mch_imps[1];
+	imps_to_combine = [egfp_mch_imps[1], egfp_mch_imps[0], roi_imp];
 	egfp_imp.show()
 	mch_imp.show();
-	roi_stack.show();
-	print("box height um = " + str(roi_stack.getNSlices() * info.get_xy_pixel_size_um()));
+	roi_imp.show();
+	print("box height um = " + str(roi_imp.getNSlices() * info.get_xy_pixel_size_um()));
 	IJ.run(egfp_imp, "Size...", "width=" + str(width) + " height=" + str(height) + " depth=" + str(depth) + " average interpolation=Bilinear");
 	IJ.run(mch_imp, "Size...", "width=" + str(width) + " height=" + str(height) + " depth=" + str(depth) + " average interpolation=Bilinear");
-	IJ.run("Merge Channels...", "c1=[" + mch_imp.getTitle() + 
-									"] c2=[" + egfp_imp.getTitle() + 
-									"] c7=[" + roi_stack.getTitle() + "] create keep");
-	
+	#IJ.run("Merge Channels...", "c1=[" + mch_imp.getTitle() + 
+	#								"] c2=[" + egfp_imp.getTitle() + 
+	#								"] c7=[" + roi_imp.getTitle() + "] create keep");
+	composite_imp = RGBStackMerge().mergeChannels(imps_to_combine, False);
+	print(composite_imp);
+	composite_imp.show();
+	WaitForUserDialog("pause").show();
+	# do qc here?
 
 	#WM.getImage("Composite").addImageListener(UpdateRoiImageListener(rois));
-	IJ.run(roi_stack, "8-bit", "");
+	IJ.run(roi_imp, "8-bit", "");
 
 	egfp_imp.changes=False;
 	mch_imp.changes=False;
-	roi_stack.changes=False;
+	roi_imp.changes=False;
 	fit_basis_imp.changes=False;
 	pts_stack_imp.changes = False;
 	egfp_imp.close();
 	mch_imp.close();
-	roi_stack.close();
+	#roi_imp.close();
 	fit_basis_imp.close();
 	pts_stack_imp.close();
-	composite_imp = WM.getImage("Composite");
-	FileSaver(composite_imp).saveAsTiffStack(os.path.join(output_path, "segmentation result.tif"));
+	if save_output:
+		FileSaver(composite_imp).saveAsTiffStack(os.path.join(output_path, "segmentation result.tif"));
 	
 	zcoords = [i for i in range(composite_imp.getNSlices())];
 	xyz_smooth_centres = [(x, y, z) for ((x, y), z) in zip(smooth_centres, zcoords)];
 	
-	composite_imp2 = straighten_vessel(composite_imp, xyz_smooth_centres);
-	composite_imp3 = straighten_vessel(composite_imp2, xyz_smooth_centres, it=2);
+	composite_imp2 = straighten_vessel(composite_imp, xyz_smooth_centres, save_output=True);
+	composite_imp3 = straighten_vessel(composite_imp2, xyz_smooth_centres, it=2, save_output=True);
 	return composite_imp3;
 
 #hsimp.addImageListener(UpdateRoiImageListener(rois));

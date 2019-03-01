@@ -2,8 +2,11 @@ import os, re
 from datetime import datetime
 from ij import ImagePlus, IJ, ImageStack
 from ij.gui import WaitForUserDialog
-from ij.process import FloatProcessor, StackProcessor
-from ij.plugin import ChannelSplitter, RGBStackMerge, Duplicator
+from ij.process import FloatProcessor, StackProcessor, StackStatistics
+from ij.plugin import ChannelSplitter, RGBStackMerge, Duplicator, ImageCalculator
+from ij.plugin.filter import RankFilters,  ParticleAnalyzer
+from ij.measure import ResultsTable
+from ij.plugin.frame import RoiManager
 
 def rot_around_x(input_stack):
 	"""do rotation around x axis"""
@@ -101,7 +104,7 @@ def rename_files(folder, previous_text, new_text):
 
 def cross_planes_approx_median_filter(stack_imp, filter_radius_um=5.0):
 	"""relatively computationally cheap, slightly crude approximation of median filter"""
-	title = imp.getTitle();
+	title = stack_imp.getTitle();
 	xy_imp = Duplicator().run(stack_imp);
 	xy_imp.setTitle("xy {}".format(title));
 	xz_imp = Duplicator().run(stack_imp);
@@ -130,7 +133,7 @@ def cross_planes_approx_median_filter(stack_imp, filter_radius_um=5.0):
 	return output_imp;
 
 def downsample_for_isotropy(imp, extra_downsample_factor=2.0, info=None):
-	"""downsample x, y pixel directions to get cubic voxels"""
+	"""downsample x, y pixel directions to get ~cubic voxels"""
 	title = imp.getTitle();
 	cal = imp.getCalibration();
 	if info is None:
@@ -234,7 +237,7 @@ def threshold_and_binarise(imp):
 #	IJ.run("3D Fill Holes", "");
 	return fit_basis_imp;
 
-def robust_convertStackToGrayX(imp, x=8):
+def robust_convertStackToGrayXbit(imp, x=8, normalise=False):
 	"""simplified from https://github.com/imagej/imagej1/blob/master/ij/process/StackConverter.java, 
 	avoiding complications of scaling based on LUT taken from the current frame. Assumes conversion
 	from grayscale image"""
@@ -242,6 +245,12 @@ def robust_convertStackToGrayX(imp, x=8):
 		raise NotImplementedError("can't convert to the specified bit depth");
 	if imp.getBitDepth()==x:
 		return imp;
+	if normalise:
+		stats = StackStatistics(imp);
+		offset = stats.min;
+		maxtomin = stats.max - stats.min;
+		IJ.run(imp, "Subtract...", "value={} stack".format(offset));
+		IJ.run(imp, "Multiply...", "value={} stack".format(float(2**x - 1)/maxtomin));
 	current_slice = imp.getCurrentSlice();
 	stack = imp.getStack();
 	out_stack = ImageStack(imp.getWidth(), imp.getHeight());
@@ -264,6 +273,31 @@ def robust_convertStackToGrayX(imp, x=8):
 	imp.setStack(out_stack);
 	IJ.showProgress(1.0);
 	imp.setSlice(current_slice);
+	return imp;
+
+def keep_largest_blob(imp):
+	"""remove all blobs other than the largest by area"""
+	rt = ResultsTable();
+	mxsz = imp.width * imp.height;
+	roim = RoiManager(False);
+	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE, rt, 0, mxsz);
+	pa.setRoiManager(roim);
+	
+	for idx in range(1, imp.getImageStackSize()+1):
+		roim.reset();
+		rt.reset();
+		imp.setPosition(idx);
+		pa.analyze(imp);
+		rt_areas = rt.getColumn(rt.getColumnIndex("Area")).tolist();
+		mx_ind = rt_areas.index(max(rt_areas))
+		indices_to_remove = [a for a in range(0,len(rt_areas)) if a != mx_ind];
+		indices_to_remove.reverse();
+		for rem_idx in indices_to_remove:
+			roim.select(imp, rem_idx);
+			IJ.run(imp, "Set...", "value=0 slice");
+	imp.killRoi();
+	roim.reset();
+	roim.close();
 	return imp;
 
 #path = "C:\\Users\\dougk\\Desktop\\test image 2.tif";
