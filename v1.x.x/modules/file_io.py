@@ -13,7 +13,7 @@ from loci.formats import ImageReader, MetadataTools
 from loci.formats.gui import BufferedImageReader
 from loci.plugins.in import ImporterOptions, ThumbLoader
 from java.awt import Panel, Dimension, Checkbox, CheckboxGroup
-from javax.swing import Box
+from javax.swing import Box, JFileChooser
 
 
 def file_location_chooser(default_directory):
@@ -25,6 +25,19 @@ def file_location_chooser(default_directory):
 	if file_path is None:
 		raise IOError('no input file chosen');
 	return file_path;
+
+def multiple_file_location_chooser(default_directory):
+	"""choose input data location with potential for being split over multiple files"""
+	chooser = JFileChooser(default_directory);
+	chooser.setDialogTitle("Choose one or more tiff files representing the data...");
+	ext_filter = FileNameExtensionFilter("*.tif", ["tif", "tiff"]);
+	chooser.setFileFilter(ext_filter);
+	chooser.setMultiSelectionEnabled(True);
+	chooser.showOpenDialog(None);
+	file_paths = [f.toString() for f in chooser.getSelectedFiles()];
+	if file_paths is None or len(file_paths)==0:
+		raise IOError('no input file chosen');
+	return file_paths;
 
 def output_folder_chooser(default_directory):
 	"""choose where output data should be saved"""
