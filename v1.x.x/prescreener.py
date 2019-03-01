@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(script_path, 'modules'));
 sys.path.insert(0, os.path.join(script_path, 'classes'));
 
 from PrescreenInfo import PrescreenInfo
+from utils import rot3d
 import file_io as io;
 	
 def z_crop(imp):
@@ -36,6 +37,29 @@ def z_crop(imp):
 	dupimp.show()
 	return dupimp, (start_z, end_z);
 
+def z_crop_finetune(imp, info):
+	"""define z cropping to allow freehand definition of lower bounds"""
+	imp.setC(info.get_mosaic_labeled_ch());
+	rot_imp = rot3d(imp, axis='x');
+	imp.close();
+	rot_imp.show();
+	IJ.setTool("freehand");
+	WaitForUserDialog("Select XZ region to crop...").show();
+	crop_roi = rot_imp.getRoi();
+	if crop_roi is None:
+		return
+	if crop_roi.getType():
+		info.set_zx_crop_rect(str([(x,y) for x, y in zip(crop_roi.getPolygon().xpoints, crop_roi.getPolygon().ypoints)]));
+	else:
+		info.set_zx_crop_rect(crop_roi.getBounds().toString());
+	if crop_roi.getType():
+		IJ.run(zcrop_imp, "Make Inverse", "");
+		inv_roi = zcrop_imp.getRoi();
+		IJ.run(zcrop_imp, "Set...", "value=0 stack");
+		IJ.run(zcrop_imp, "Make Inverse", "");
+	imp = rot3d(rot_imp, axis='x');
+	return imp;
+
 def perform_cropping(imp, info, output_folder, default_path):
 	imp.show();
 	imp.setC(info.get_mosaic_labeled_ch());
@@ -54,7 +78,8 @@ def perform_cropping(imp, info, output_folder, default_path):
 		crop_roi = imp2.getRoi();
 	if crop_roi.getType():
 		info.set_xy_crop_rect(str([(x,y) for x, y in zip(crop_roi.getPolygon().xpoints, crop_roi.getPolygon().ypoints)]));
-	info.set_xy_crop_rect(crop_roi.getBounds().toString());
+	else:
+		info.set_xy_crop_rect(crop_roi.getBounds().toString());
 	imp2.close();
 	zcrop_imp.show();
 	zcrop_imp.setRoi(crop_roi);
@@ -64,6 +89,7 @@ def perform_cropping(imp, info, output_folder, default_path):
 		inv_roi = zcrop_imp.getRoi();
 		IJ.run(zcrop_imp, "Set...", "value=0 stack");
 		IJ.run(zcrop_imp, "Make Inverse", "");
+#	zcrop_imp = z_crop_finetune(zcrop_imp, info);
 	return imp, zcrop_imp, info, info.get_input_file_path();
 		
 def main():
