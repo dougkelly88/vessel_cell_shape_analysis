@@ -12,14 +12,16 @@ def rot_around_x(input_stack):
 	output_height = input_stack.getSize();
 	output_stack = ImageStack(output_width, output_height);
 	for yidx in range(input_stack.getHeight()):
+		IJ.showProgress(float(yidx)/output_slices);
 		output_stack.addSlice(FloatProcessor(output_width, output_height, input_stack.getVoxels(0, yidx, 0, output_width, 1, output_height, [])));
+	IJ.showProgress(1.0);
 	return output_stack;
 
 def rot3d(imp, axis='x'):
 	"""pare back Slicer to implement whole-image, +90* rotations that return ImagePlus"""
 	if imp.getType()==ImagePlus.COLOR_256 or imp.getType()==ImagePlus.COLOR_RGB:
 		raise NotImplementedError("Handling of colour images isn't implemented yet");
-
+	IJ.showStatus("Rotating around {}-axis...".format(axis))
 	title = imp.getTitle();
 	original_cal = imp.getCalibration();
 	new_cal = original_cal;
