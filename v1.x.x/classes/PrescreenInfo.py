@@ -11,6 +11,7 @@ class PrescreenInfo(object):
 					input_file_series=0,
 					metadata_file_path=None,
 					z_crop_frames=None, 
+					z_crop_roi=None,
 					xy_crop_rect=None, 
 					vessel_type='xISV',
 					ch1_label=None,
@@ -25,6 +26,7 @@ class PrescreenInfo(object):
 		self.input_file_series = input_file_series;
 		self.metadata_file_path = metadata_file_path;
 		self.z_crop_frames = z_crop_frames;
+		self.z_crop_roi = z_crop_roi;
 		self.xy_crop_rect = xy_crop_rect;
 		self.vessel_type = vessel_type;
 		self.ch1_label = ch1_label;
@@ -37,27 +39,23 @@ class PrescreenInfo(object):
 		self.__prescreeninfo__ = True;
 
 	# Setters
-
 	def set_input_file_series(self, input_file_series):
 		self.input_file_series = input_file_series;
 
 	def set_input_file_path(self, input_file_path):
-		if os.path.isfile(input_file_path):
-			self.input_file_path = input_file_path;
-		else:
-			raise IOError("File " + input_file_path + " not found!");
-
+		self.input_file_path = input_file_path;
+		
 	def set_metadata_file_path(self, metadata_file_path):
-		if os.path.isfile(metadata_file_path):
-			self.metadata_file_path = metadata_file_path;
-		else:
-			raise IOError("File " + metadata_file_path + " not found!");
+		self.metadata_file_path = metadata_file_path;
 
 	def set_z_crop_frames(self, z_crop_frames):
 		if len(z_crop_frames) == 2:
 			self.z_crop_frames = z_crop_frames;
 		else:
 			raise ValueError("Crop frames should be defined by a length 2 list: [start, stop]");
+
+	def set_z_crop_roi(self, zx_crop_rect):
+		self.zx_crop_rect = zx_crop_rect;
 
 	def set_xy_crop_rect(self, xy_crop_rect):
 		self.xy_crop_rect = xy_crop_rect;
@@ -115,7 +113,12 @@ class PrescreenInfo(object):
 		return self.z_crop_frames;
 
 	def get_xy_crop_rect(self):
+		# todo: ensure that this is parsed properly
 		return self.xy_crop_rect;
+
+	def get_zx_crop_rect(self):
+		# todo: ensure that this is parsed properly
+		return self.zx_crop_rect;
 
 	def get_vessel_type(self):
 		return self.vessel_type;
@@ -172,9 +175,14 @@ class PrescreenInfo(object):
 				self.set_experiment_id(dct["experiment_id"]);
 				self.set_metadata_file_path(dct["metadata_file_path"]);
 				self.set_mosaic_labeled_ch(dct["mosaic_labeled_ch"]);
+				try:
+					self.set_zx_crop_rect(dct["zx_crop_rect"]);
+				except:
+					pass;
 			else:
 				raise ValueError("JSON file doesn't translate to prescreeninfo format")
-		except IOError:
+		except IOError as e:
+			print(e);
 			print("IOError reading from JSON file");
 			return False;
 		except: 
