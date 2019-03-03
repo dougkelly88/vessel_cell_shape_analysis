@@ -21,9 +21,16 @@ import projection as prj
 
 Prefs.blackBackground = True;
 
+# bulbous data
 im_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Ml1bEGFP\\Cropped\\2019-03-01 10-18-42 output\\Cropped dextran-rhodamine ml1b-egfp 2019-02-27 cell shape analysis ee2a xISV 1.tif";
 metadata_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Ml1bEGFP\\Cropped\\2019-03-01 10-18-42 output\\Cropped dextran-rhodamine ml1b-egfp 2019-02-27 cell shape analysis ee2a xISV 1.json";
 output_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Ml1bEGFP\\Straightening output";
+
+# original data
+im_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\AB inj marcksl1b-EGFP, rhodamine-dextran uangiography\\Cropped\\2019-01-10 16-03-47 output\\Cropped Dextran-Rhodamine Marcksl1b-EGFP Lumen staining test eE1 xISV 1.tif";
+metadata_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\AB inj marcksl1b-EGFP, rhodamine-dextran uangiography\\Cropped\\2019-01-10 16-03-47 output\\Cropped Dextran-Rhodamine Marcksl1b-EGFP Lumen staining test eE1 xISV 1.json";
+output_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\straightening output";
+
 
 print("starting tube fitting for vessel axis extraction...");
 t1 = datetime.now();
@@ -35,7 +42,9 @@ print(imp);
 Prefs.blackBackground = True;
 print("starting angular projection of vessel surface...");
 t1 = datetime.now();
-out_imp, _, ring_rois, centres = prj.do_angular_projection(imp, generate_roi_stack=True);
+cal = imp.getCalibration();
+print("pre-projection pixel wxhxd = {}x{}x{}".format(cal.pixelWidth, cal.pixelHeight, cal.pixelDepth));
+out_imp, _, ring_rois, centres = prj.do_angular_projection(imp, generate_roi_stack=True, min_r_pix=5, max_r_pix=30);
 t2 = datetime.now();
 print("done projection in {} s. ".format(round(0.001*(t2.getTime() - t1.getTime()))));
 print("starting unwrapping of cell from around vessel wall...");

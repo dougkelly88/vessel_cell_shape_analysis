@@ -130,6 +130,9 @@ def cross_planes_approx_median_filter(stack_imp, filter_radius_um=5.0):
 	output_imp.show();
 	IJ.run(output_imp, "Divide...", "value=3 stack");
 	output_imp.setTitle("Cross-plane median filtered {} (r={} um)".format(title, filter_radius_um).replace(".tif", ""));
+	print("Image size after applying approx median filter = ({}x{}x{})".format(output_imp.getWidth(), 
+																			output_imp.getHeight(), 
+																			output_imp.getNSlices()));
 	return output_imp;
 
 def downsample_for_isotropy(imp, extra_downsample_factor=2.0, info=None):
@@ -144,10 +147,11 @@ def downsample_for_isotropy(imp, extra_downsample_factor=2.0, info=None):
 		pix_w = info.get_xy_pixel_size_um();
 		pix_h = pix_w;
 		pix_d = info.get_z_plane_spacing_um();
-		print("pixel whd = ({}, {}, {}".format(pix_w, pix_h, pix_d));
 	im_w = imp.getWidth();
 	im_h = imp.getHeight();
 	im_d = imp.getNSlices();
+	print("original pixel whd = ({}, {}, {})".format(pix_w, pix_h, pix_d));
+	print("original image whd = ({}, {}, {})".format(im_w, im_h, im_d));
 	im_nch = imp.getNChannels();
 	if im_nch > 1:
 		split_ch = ChannelSplitter().split(imp);
@@ -175,6 +179,7 @@ def downsample_for_isotropy(imp, extra_downsample_factor=2.0, info=None):
 	cal.pixelWidth = im_w/xy_scaled_w * pix_w;
 	cal.pixelHeight = im_h/xy_scaled_h * pix_h;
 	cal.pixelDepth = im_d/z_scaled_h * pix_d;
+	print("new pixel whd = ({}, {}, {})".format(cal.pixelWidth, cal.pixelHeight, cal.pixelDepth));
 	imp.changes = False;
 	imp.close();
 	for ch_imp in split_ch:
@@ -184,6 +189,7 @@ def downsample_for_isotropy(imp, extra_downsample_factor=2.0, info=None):
 	else:
 		out_imp = out_imps[0];
 	out_imp.setCalibration(cal);
+	print("new image whd = ({}, {}, {})".format(out_imp.getWidth(), out_imp.getHeight(), out_imp.getNSlices()));
 	print("...done downsampling {} and making isotropic. ".format(title));
 	IJ.showStatus("...done downsampling and making ~isotropic. ");
 	return out_imp;

@@ -152,6 +152,9 @@ def convex_hull_pts(pts):
 def split_and_rotate(imp, info):
 	"""return image to segment on, image to project out, and images to display"""
 	# for now, assume that these are ISVs and that embryo is mounted in familiar fashion. First of these can be developed out...
+	print("Image dimensions at start of split and rotate = ({}x{}x{}) pix".format(imp.getWidth(), 
+																			   imp.getHeight(), 
+																			   imp.getNSlices()));
 	if imp.isVisible():
 		IJ.run("Enhance Contrast", "saturated=0.35");
 	seg_ch_idx, proj_ch_idx = ui.choose_segmentation_and_projection_channels(info);
@@ -178,6 +181,9 @@ def split_and_rotate(imp, info):
 	proj_imp.changes = False;
 	seg_imp.close();
 	proj_imp.close();
+	print("Image dimensions at start of split and rotate = ({}x{}x{}) pix".format(rot_proj_imp.getWidth(), 
+																			   rot_proj_imp.getHeight(), 
+																			   rot_proj_imp.getNSlices()));
 	return rot_seg_imp, rot_proj_imp, egfp_mch_imps
 
 def lin_interp_1d(old_x, old_y, new_x):
@@ -260,6 +266,7 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 	info = PrescreenInfo();
 	info.load_info_from_json(metadata_path);
 	z_xy_ratio = abs(info.get_z_plane_spacing_um()) / info.get_xy_pixel_size_um();
+	#z_xy_ratio = 1.0;
 	bfimp = bf.openImagePlus(im_path);
 	imp = bfimp[0];
 	imp.show();
@@ -336,11 +343,19 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 	composite_imp = RGBStackMerge().mergeChannels(imps_to_combine, False);
 	print(composite_imp);
 	composite_imp.show();
+	print("end of vessel centerline id step, image dims = ({}x{}x{})".format(composite_imp.getWidth(), 
+																		  composite_imp.getHeight(), 
+																		  composite_imp.getNSlices()));
 	WaitForUserDialog("pause").show();
 	# do qc here?
 
 	#WM.getImage("Composite").addImageListener(UpdateRoiImageListener(rois));
 	IJ.run(roi_imp, "8-bit", "");
+
+	if save_output:
+		FileSaver(composite_imp).saveAsTiffStack(os.path.join(output_path, "segmentation result.tif"));
+		print(roi_imp);
+		FileSaver(roi_imp).saveAsTiff(os.path.join(output_path, "vessel axis.tif"));
 
 	egfp_imp.changes=False;
 	mch_imp.changes=False;
@@ -352,8 +367,6 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 	#roi_imp.close();
 	fit_basis_imp.close();
 	pts_stack_imp.close();
-	if save_output:
-		FileSaver(composite_imp).saveAsTiffStack(os.path.join(output_path, "segmentation result.tif"));
 	
 	zcoords = [i for i in range(composite_imp.getNSlices())];
 	xyz_smooth_centres = [(x, y, z) for ((x, y), z) in zip(smooth_centres, zcoords)];
