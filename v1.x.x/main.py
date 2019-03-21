@@ -20,9 +20,18 @@ import projection as prj
 
 Prefs.blackBackground = True;
 
-im_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\AB inj marcksl1b-EGFP, rhodamine-dextran uangiography\\Cropped\\2019-01-10 16-03-47 output\\Cropped Dextran-Rhodamine Marcksl1b-EGFP Lumen staining test eE1 xISV 1.tif";
-metadata_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\AB inj marcksl1b-EGFP, rhodamine-dextran uangiography\\Cropped\\2019-01-10 16-03-47 output\\Cropped Dextran-Rhodamine Marcksl1b-EGFP Lumen staining test eE1 xISV 1.json";
-output_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\straightening output";
+# basic test data
+#im_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\AB inj marcksl1b-EGFP, rhodamine-dextran uangiography\\Cropped\\2019-01-10 16-03-47 output\\Cropped Dextran-Rhodamine Marcksl1b-EGFP Lumen staining test eE1 xISV 1.tif";
+#metadata_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\AB inj marcksl1b-EGFP, rhodamine-dextran uangiography\\Cropped\\2019-01-10 16-03-47 output\\Cropped Dextran-Rhodamine Marcksl1b-EGFP Lumen staining test eE1 xISV 1.json";
+#output_path = "D:\\data\Marcksl1 cell shape analysis\\2018-12-31 Lumen stained samples\\straightening output";
+
+# working data
+im_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Control LynEGFP\\Cropped\\2019-03-01 10-59-05 output\\Cropped dextran-rhodamine lynEGFP 2019-02-22 cell shape analysis control e1d xISV 1.tif"
+metadata_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Control LynEGFP\\Cropped\\2019-03-01 10-59-05 output\\Cropped dextran-rhodamine lynEGFP 2019-02-22 cell shape analysis control e1d xISV 1.json"
+output_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Control LynEGFP\\shape analysis out"
+#output_path = os.path.join(output_path, os.path.splitext(os.path.basename(im_path))[0]);
+if not os.path.isdir(output_path):
+	os.mkdir(output_path);
 
 print("starting tube fitting for vessel axis extraction...");
 t1 = datetime.now();
