@@ -42,17 +42,11 @@ class PrescreenInfo(object):
 		self.input_file_series = input_file_series;
 
 	def set_input_file_path(self, input_file_path):
-		if os.path.isfile(input_file_path):
-			self.input_file_path = input_file_path;
-		else:
-			raise IOError("File " + input_file_path + " not found!");
+		self.input_file_path = input_file_path;
 
 	def set_metadata_file_path(self, metadata_file_path):
-		if os.path.isfile(metadata_file_path):
-			self.metadata_file_path = metadata_file_path;
-		else:
-			raise IOError("File " + metadata_file_path + " not found!");
-
+		self.metadata_file_path = metadata_file_path;
+		
 	def set_z_crop_frames(self, z_crop_frames):
 		if len(z_crop_frames) == 2:
 			self.z_crop_frames = z_crop_frames;
