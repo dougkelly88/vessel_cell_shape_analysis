@@ -188,25 +188,25 @@ def new_resample_z(spline_points, target_zs):
 	# DO SMOOTHING OF OUTPUT POINTS?
 	return out_points, closest_idxs;
 
-#listener = UpdateRoiImageListener([]);
-#imp.addImageListener(listener);
-#IJ.setTool("elliptical");
+listener = UpdateRoiImageListener([]);
+imp.addImageListener(listener);
+IJ.setTool("elliptical");
 step_size = 100;
-#next_z = 1;
-#while next_z < imp.getNSlices():
-#	imp.setZ(next_z)
-#	WaitForUserDialog("Add approx centre around every {}th frame, ensuring that the start (lowest z) of the region for unwrapping is included".format(step_size)).show();
-#	next_z = imp.getZ() + step_size
-#	listener.imageUpdated(imp);
-##	imp.setZ(imp.getZ() + 1); # force update of roi list, possibly better to call imageUpdated directly?
-#	print(listener.getRoiList());
-#imp.setZ(imp.getNSlices());
-#WaitForUserDialog("Ensure that end (highest z) of the region for unwrapping has a manually defined point...");
-#listener.imageUpdated(imp);
-#manual_centers = listener.getRoiList();
-#imp.removeImageListener(listener);
+next_z = 1;
+while next_z < imp.getNSlices():
+	imp.setZ(next_z)
+	WaitForUserDialog("Add approx centre around every {}th frame, ensuring that the start (lowest z) of the region for unwrapping is included".format(step_size)).show();
+	next_z = imp.getZ() + step_size
+	listener.imageUpdated(imp);
+#	imp.setZ(imp.getZ() + 1); # force update of roi list, possibly better to call imageUpdated directly?
+	print(listener.getRoiList());
+imp.setZ(imp.getNSlices());
+WaitForUserDialog("Ensure that end (highest z) of the region for unwrapping has a manually defined point...").show();
+listener.imageUpdated(imp);
+manual_centers = listener.getRoiList();
+imp.removeImageListener(listener);
 
-manual_centers = [(270, 135, 1), (258, 102, 101), (286, 63, 201), (299, 60, 301), (311, 77, 401), (335, 131, 501), (364, 156, 601), (382, 132, 701), (402, 120, 801), (382, 142, 901), (322, 200, 1001)];
+#manual_centers = [(270, 135, 1), (258, 102, 101), (286, 63, 201), (299, 60, 301), (311, 77, 401), (335, 131, 501), (364, 156, 601), (382, 132, 701), (402, 120, 801), (382, 142, 901), (322, 200, 1001)];
 manual_centers = sorted(manual_centers, key=lambda xyz: xyz[2]);
 spline_interp_centers = catmull_rom_chain(manual_centers, n_points=5*step_size);
 target_zs = [z for z in range(manual_centers[0][2], manual_centers[-1][2]+1)];
