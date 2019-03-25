@@ -1,13 +1,14 @@
 # use D:\data\Marcksl1 cell shape analysis\e27 ISV1.tif for testing,,,
-import math, sys, os
+import math, sys, os, csv
 
-from ij import IJ, ImageStack, ImagePlus, Prefs
-from ij.gui import EllipseRoi, WaitForUserDialog, Roi, PolygonRoi
+from ij import IJ, ImageStack, ImagePlus, Prefs, ImageListener
+from ij.gui import EllipseRoi, WaitForUserDialog, Roi, PolygonRoi, NonBlockingGenericDialog, OvalRoi, PointRoi
 from ij.io import FileSaver
-from ij.plugin import ChannelSplitter, ImageCalculator, Duplicator, SubstackMaker, Straightener
+from ij.plugin import ChannelSplitter, ImageCalculator, Duplicator, SubstackMaker, Straightener, RGBStackMerge
 from ij.process import StackProcessor, AutoThresholder, StackStatistics, FloatProcessor
 from ij import WindowManager as WM
 from loci.plugins import BF as bf
+from java.awt import Point, Color
 
 
 #im_test_path = "D:\\data\\Marcksl1 cell shape analysis\\e27 ISV1.tif";
@@ -31,12 +32,145 @@ if "Fiji.app" in script_path:
 sys.path.insert(0, os.path.join(script_path, 'modules'));
 sys.path.insert(0, os.path.join(script_path, 'classes'));
 
-from UpdateRoiImageListener import UpdateRoiImageListener
 from PrescreenInfo import PrescreenInfo
 import file_io as io
 import ellipse_fitting
 import ui
 import utils
+
+def MyWaitForUser(title, message):
+	"""non-modal dialog with option to cancel the analysis"""
+	dialog = NonBlockingGenericDialog(title);
+	dialog.setCancelLabel("Cancel analysis");
+	if type(message) is list:
+		for line in message:
+			dialog.addMessage(line);
+	else:
+		dialog.addMessage(message);
+	dialog.showDialog();
+	if dialog.wasCanceled():
+		raise KeyboardInterrupt("Run canceled");
+	return;
+
+class ManualSegmentationImageListener(ImageListener):
+	"""class to support updating ROI from list upon change of frame"""
+	def __init__(self, roi_list):
+		self.last_slice = 1;
+		self.roi_list = roi_list;
+		print("ManualSegmentationImageListener started");
+
+	def imageUpdated(self, imp):
+		roi = imp.getRoi();
+		if imp.getNSlices() > imp.getNFrames():
+			slc = imp.getZ();
+		else:
+			slc = imp.getT();
+		if roi is not None:
+			if not roi.isArea():
+				pt = roi.getContainedPoints()[0];
+			else:
+				rot_center = roi.getRotationCenter(); 
+				x = int(rot_center.xpoints[0]);
+				y = int(rot_center.ypoints[0]);
+				print("x = {}".format(x));
+				print("y = {}".format(y));
+				pt = Point(x, y);
+			print("adding {} to list at slice {}".format(pt, self.last_slice));
+			if self.last_slice in [z for (x, y, z) in self.roi_list]:
+				self.roi_list[[z for (x, y, z) in self.roi_list].index(self.last_slice)] = (pt.x, pt.y, slc);
+				print(self.roi_list);
+			else:
+				self.roi_list.append((pt.x, pt.y, self.last_slice));
+			imp.killRoi();
+		
+#		if slc in [z for (x, y, z) in self.roi_list]:
+#			roi_list_entry = self.roi_list[[z for (x, y, z) in self.roi_list].index(slc)];
+#			print("found entry in list ({}), displaying...".format(roi_list_entry));
+#			roi = PointRoi(roi_list_entry[0], roi_list_entry[1]);
+#			imp.setRoi(roi);
+		self.last_slice = slc;
+		
+#		print(self.roi_list);
+		
+	def imageOpened(self, imp):
+		print("ManualSegmentationImageListener: image opened");
+			
+	def imageClosed(self, imp):
+		print("ManualSegmentationImageListener: image closed");
+		imp.removeImageListener(self);
+
+	def getRoiList(self):
+		return self.roi_list;
+
+def catmull_rom_spline(P0, P1, P2, P3, n_points=100):
+	"""
+	P0, P1, P2, and P3 should be (x,y,z)-tuples that are knots defining the Catmull-Rom spline.
+	nPoints is the number of points to include in this curve segment.
+	Modified from https://en.wikipedia.org/wiki/Centripetal_Catmull%E2%80%93Rom_spline#Code_example_in_Python to be 
+	independent of Numpy
+	"""
+	# Calculate t0 to t4
+	alpha = 0.5 # 0: uniform sampling; 0.5: centripetal sampling; 1: chordal sampling
+	def tj(ti, Pi, Pj):
+		xi, yi, zi = Pi
+		xj, yj, zj = Pj
+		return ( ( (xj-xi)**2 + (yj-yi)**2 + (zj-zi)**2)**0.5 )**alpha + ti
+
+	t0 = 0
+	t1 = tj(t0, P0, P1)
+	t2 = tj(t1, P1, P2)
+	t3 = tj(t2, P2, P3)
+
+	# Only calculate points between P1 and P2
+	t = [t1+(t2-t1)*float(idx)/(n_points-1) for idx in range(n_points)];
+
+	# Implement Catmull-Rom in pure python :/
+	A1 = [[(t1-tt)/(t1-t0)*P0[idx] + (tt-t0)/(t1-t0)*P1[idx] for idx in range(3)] for tt in t];
+	A2 = [[(t2-tt)/(t2-t1)*P1[idx] + (tt-t1)/(t2-t1)*P2[idx] for idx in range(3)] for tt in t];
+	A3 = [[(t3-tt)/(t3-t2)*P2[idx] + (tt-t2)/(t3-t2)*P3[idx] for idx in range(3)] for tt in t];
+	B1 = [[(t2-tt)/(t2-t0)*A1[tidx][idx] + (tt-t0)/(t2-t0)*A2[tidx][idx] for idx in range(3)] for tidx, tt in enumerate(t)];
+	B2 = [[(t3-tt)/(t3-t1)*A2[tidx][idx] + (tt-t1)/(t3-t1)*A3[tidx][idx] for idx in range(3)] for tidx, tt in enumerate(t)];
+	C  = [[(t2-tt)/(t2-t1)*B1[tidx][idx] + (tt-t1)/(t2-t1)*B2[tidx][idx] for idx in range(3)] for tidx, tt in enumerate(t)];
+	return C
+
+def linear_interp(p0, p1, n_points=100):
+	"""
+	Return linear interpolation for the segment between knots P0 and P1
+	"""
+	t = [float(idx)/(n_points - 1) for idx in range(n_points)];
+	c = [[p0[idx] + tt*(p1[idx] - p0[idx]) for idx in range(3)] for tt in t];
+	return c;
+
+def catmull_rom_chain(p, n_points=100):
+	"""
+	Calculate Catmull Rom for a list of (x, y, z)-tuples and return the combined curve, adding linear segments at start
+	and end. 
+	"""
+	sz = len(p)
+
+	# The curve C will contain an array of (x,y) points.
+	c = []
+	c.extend(linear_interp(p[0], p[1], n_points=n_points));
+	for i in range(sz-3):
+		cc = catmull_rom_spline(p[i], p[i+1], p[i+2], p[i+3], n_points=n_points)
+		c.extend(cc)
+	lininterp = linear_interp(p[-2], p[-1], n_points=n_points);
+	c.extend(lininterp);
+	return c;
+
+def new_resample_z(spline_points, target_zs):
+	spline_zs = [z for _,_,z in spline_points];
+	out_points = [];
+	closest_idxs = [];
+	for idx, z_target in enumerate(target_zs):
+	    lf = [abs(spline_z - z_target) for spline_z in spline_zs];
+	    # this might fail when spline has regions of decreasing z!
+	    closest_idx = lf.index(min(lf));
+	    print("Target z = {}, achieved point = {}".format(z_target, spline_points[closest_idx]));
+	    closest_idxs.append(closest_idx);
+	    out_points.append((spline_points[closest_idx][0], spline_points[closest_idx][1], z_target));
+	# DO SMOOTHING OF OUTPUT POINTS?
+	return out_points, closest_idxs;
 
 def generate_smoothed_vessel_axis(centres, pixel_size_um=0.1625):
 	"""From a list of fitted vessel centres, generate the vessel path"""
@@ -247,7 +381,80 @@ def straighten_vessel(imp, smooth_centres, it=1):
 	FileSaver(new_composite).saveAsTiffStack(os.path.join(output_path, "after rotation " + str(it) + ".tif"));
 	return new_composite;
 
-def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, output_path=output_path):
+def manual_axis_definition(imp, output_path=None):
+	"""perform manual steps to determine vessel centreline"""
+	listener = ManualSegmentationImageListener([]);
+	imp.addImageListener(listener);
+	IJ.setTool("elliptical");
+	step_size = 100;
+	next_z = 1;
+	while next_z < imp.getNSlices():
+		imp.setZ(next_z)
+		MyWaitForUser("Manual segmentation...", "Add approx centre around every {}th frame by inscribing an ellipse, ensuring that the start (lowest z) of the region for unwrapping is included".format(step_size));
+		next_z = imp.getZ() + step_size
+		listener.imageUpdated(imp);
+		#print(listener.getRoiList());
+	imp.setZ(imp.getNSlices());
+	MyWaitForUser("Manual segmentation...", "Ensure that end (highest z) of the region for unwrapping has a manually defined point...");
+	listener.imageUpdated(imp);
+	manual_centers = listener.getRoiList();
+	imp.removeImageListener(listener);
+
+	#manual_centers = [(270, 135, 1), (258, 102, 101), (286, 63, 201), (299, 60, 301), (311, 77, 401), (335, 131, 501), (364, 156, 601), (382, 132, 701), (402, 120, 801), (382, 142, 901), (322, 200, 1001)];
+	manual_centers = sorted(manual_centers, key=lambda xyz: xyz[2]);
+	spline_interp_centers = catmull_rom_chain(manual_centers, n_points=5*step_size);
+	target_zs = [z for z in range(manual_centers[0][2], manual_centers[-1][2]+1)];
+	output_positions, _ = new_resample_z(spline_interp_centers, target_zs);
+	print(output_positions);
+	print("len(output_positions) = {}".format(len(output_positions)));
+	vessel_ax_imp = IJ.createImage("Spline fitted central axis", "16-bit", imp.getWidth(), imp.getHeight(), imp.getNSlices());
+	for zidx, vessel_center in enumerate(output_positions):
+		vessel_ax_imp.setZ(zidx+1);
+		roi = OvalRoi(vessel_center[0], vessel_center[1], 5, 5);
+		vessel_ax_imp.setRoi(roi);
+		IJ.run(vessel_ax_imp, "Set...", "value=" + str(vessel_ax_imp.getProcessor().maxValue()) + " slice");
+	vessel_ax_imp.show();
+	channels  = ChannelSplitter().split(imp);
+	out_imp = RGBStackMerge().mergeChannels([channels[0], channels[1], vessel_ax_imp], True);
+	out_imp.setTitle("Manually defined vessel axis");
+	vessel_ax_imp.changes = False;
+	vessel_ax_imp.close();
+	out_imp.show();
+	try:
+		FileSaver(out_imp).saveAsTiffStack(os.path.join(output_path, "manually determined vessel axis.tif"));
+	except IOError as e:
+		print(e.message);
+	save_centers(output_positions, output_path);
+	return output_positions, out_imp;
+
+def save_centers(centers, output_folder):
+	"""save vessel axis to csv for later loading"""
+	out_path = os.path.join(output_folder, "vessel_axis.csv");
+	f = open(out_path, 'wb');
+	try:
+		writer = csv.writer(f);
+		for c in centers:
+			writer.writerow([c[0], c[1], c[2]]);
+	except IOError as e:
+		print("problem saving, {}".format(e));
+	finally:
+		f.close();
+
+def load_centers(centers_path):
+	"""load vessel axis from previously determined data"""
+	f = open(centers_path, 'rb');
+	centers = [];
+	try:
+		csvreader = csv.reader(f);
+		for row in csvreader:
+			centers.append((float(row[0]), float(row[1]), float(row[2])));
+	except IOError as e:
+		print("problem saving, {}".format(e));
+	finally:
+		f.close();
+	return centers;
+
+def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, output_path=output_path, load_centers_path=None):
 	# todo: fix things so that all operations use a consistent definition of background rather than changing Prefs on the fly...
 	Prefs.blackBackground = False;
 	info = PrescreenInfo();
@@ -260,96 +467,53 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 	IJ.run(imp, "Set Scale...", "distance=0 known=0 pixel=1 unit=pixel");
 
 	rot_seg_imp, rot_proj_imp, egfp_mch_imps = split_and_rotate(imp, info);
-	depth = rot_seg_imp.getNSlices() if rot_seg_imp.getNSlices() > rot_seg_imp.getNFrames() else rot_seg_imp.getNFrames();
-	width = rot_seg_imp.getWidth();
-	height = int(round(rot_seg_imp.getHeight() * z_xy_ratio));
+	if "isv" in info.get_vessel_type().lower():
+		depth = rot_seg_imp.getNSlices() if rot_seg_imp.getNSlices() > rot_seg_imp.getNFrames() else rot_seg_imp.getNFrames();
+		width = rot_seg_imp.getWidth();
+		height = int(round(rot_seg_imp.getHeight() * z_xy_ratio));
+	else:
+		depth = rot_seg_imp.getNSlices() if rot_seg_imp.getNSlices() > rot_seg_imp.getNFrames() else rot_seg_imp.getNFrames();
+		width = int(round(rot_seg_imp.getWidth() * z_xy_ratio));
+		height = rot_seg_imp.getHeight();
+	print(z_xy_ratio);
 
-	# Apply 3d MEDIAN FILTER to denoise and emphasise vessel-associated voxels
-	fit_basis_imp = threshold_and_binarise(rot_seg_imp, z_xy_ratio);
-	fit_basis_imp.setTitle("fit_basis_imp");
-	fit_basis_imp.show();
-
-	# plane-wise, use binary-outline
-	# say the non-zero points then make up basis for fitting to be performed per http://nicky.vanforeest.com/misc/fitEllipse/fitEllipse.html
-	rois = [];
-	centres = [];
-	major_axes = [];
-	roi_stack = IJ.createImage("rois", width, height, depth, 32);
-	pts_stack = ImageStack(width, height+1);
-	IJ.run(imp, "Line Width...", "line=3");
-	for zidx in range(fit_basis_imp.getNSlices()):
-		fit_basis_imp.setZ(zidx+1);
-		IJ.run(fit_basis_imp, "Outline", "slice");
-		IJ.run(fit_basis_imp, "Create Selection", "");
-		roi = fit_basis_imp.getRoi();
-		fit_basis_imp.killRoi();
-		pts = [(pt.x, pt.y) for pt in roi.getContainedPoints()];
-		clean_pts = convex_hull_pts(pts);
-		clean_pts = [(x, z_xy_ratio * y) for (x, y) in clean_pts];
-		# make a stack of clean points...
-		ip = FloatProcessor(width, height+1)
-		pix = ip.getPixels();
-		for pt in clean_pts:
-			pix[int(pt[1]) * width + int(pt[0])] = 128;
-		pts_stack.addSlice(ip);
-		centre, angle, axl = ellipse_fitting.fit_ellipse(clean_pts);
-		major_axes.append(max(axl));
-		centres.append(centre);
-		rot_seg_imp.setZ(zidx+1);
-		ellipse_roi = ellipse_fitting.generate_ellipse_roi(centre, angle, axl);
-		rois.append(ellipse_roi);
-	IJ.run(imp, "Line Width...", "line=1");
-
-	smooth_centres, tangent_vecs =  generate_smoothed_vessel_axis(centres, pixel_size_um=info.get_xy_pixel_size_um());
-	for zidx in range(fit_basis_imp.getNSlices()):
-		centre = smooth_centres[zidx];
-		major_axis = major_axes[zidx];
-		ellipse_roi = EllipseRoi(centre[0]-2, centre[1], centre[0]+2, centre[1], 1.0);
-		roi_stack.setZ(zidx+1);
-		roi_stack.setRoi(ellipse_roi);
-		IJ.run(roi_stack, "Set...", "value=" + str(roi_stack.getProcessor().maxValue()) + " slice");
-
-	pts_stack_imp = ImagePlus("Cleaned points", pts_stack);
-	pts_stack_imp.setTitle("pts_stack_imp");
-	pts_stack_imp.show();
-
-	rot_seg_imp.changes = False;
-	rot_seg_imp.close();
-	egfp_imp = egfp_mch_imps[0];
-	mch_imp = egfp_mch_imps[1];
-	egfp_imp.show()
-	mch_imp.show();
-	roi_stack.show();
-	print("box height um = " + str(roi_stack.getNSlices() * info.get_xy_pixel_size_um()));
-	IJ.run(egfp_imp, "Size...", "width=" + str(width) + " height=" + str(height) + " depth=" + str(depth) + " average interpolation=Bilinear");
-	IJ.run(mch_imp, "Size...", "width=" + str(width) + " height=" + str(height) + " depth=" + str(depth) + " average interpolation=Bilinear");
-	IJ.run("Merge Channels...", "c1=[" + mch_imp.getTitle() + 
-									"] c2=[" + egfp_imp.getTitle() + 
-									"] c7=[" + roi_stack.getTitle() + "] create keep");
+	merged_rotated_imp = RGBStackMerge().mergeChannels([rot_seg_imp, rot_proj_imp], False);
+	#merged_rotated_imp.show();
+	IJ.run(merged_rotated_imp, 
+			"Size...", 
+			"width={} height={} depth={} average interpolation=Bilinear".format(width, height, depth));
+	merged_rotated_imp = utils.convert_multichannel_stack_to_Xbit(merged_rotated_imp, bitdepth=16);
+	merged_rotated_imp.setTitle("converted merged_rotated_imp");
+	merged_rotated_imp.show();
+	#MyWaitForUser("pause", "pause");
+	FileSaver(merged_rotated_imp).saveAsTiffStack(os.path.join(output_path, "rotated to align z to DV axis.tif"));
+	merge_rot_imp_with_axis = None;
+	if load_centers_path is None:
+		xyz_smooth_centres, merge_rot_imp_with_axis = manual_axis_definition(merged_rotated_imp, output_path=output_path);
+		utils.convert_multichannel_stack_to_Xbit(merge_rot_imp_with_axis, bitdepth=16);
+		merged_rotated_imp.close();
+	else:
+		xyz_smooth_centres = load_centers(load_centers_path);
 	
-
-	#WM.getImage("Composite").addImageListener(UpdateRoiImageListener(rois));
-	IJ.run(roi_stack, "8-bit", "");
-
-	egfp_imp.changes=False;
-	mch_imp.changes=False;
-	roi_stack.changes=False;
-	fit_basis_imp.changes=False;
-	pts_stack_imp.changes = False;
-	egfp_imp.close();
-	mch_imp.close();
-	roi_stack.close();
-	fit_basis_imp.close();
-	pts_stack_imp.close();
-	composite_imp = WM.getImage("Composite");
-	FileSaver(composite_imp).saveAsTiffStack(os.path.join(output_path, "segmentation result.tif"));
+	if merge_rot_imp_with_axis is not None:
+		composite_imp2 = straighten_vessel(merge_rot_imp_with_axis, xyz_smooth_centres);
+		merge_rot_imp_with_axis.changes = False;
+		merge_rot_imp_with_axis.close();
+	else:
+		composite_imp2 = straighten_vessel(merged_rotated_imp, xyz_smooth_centres);
+		merged_rotated_imp.changes = False;
+		merged_rotated_imp.close();
 	
-	zcoords = [i for i in range(composite_imp.getNSlices())];
-	xyz_smooth_centres = [(x, y, z) for ((x, y), z) in zip(smooth_centres, zcoords)];
-	
-	composite_imp2 = straighten_vessel(composite_imp, xyz_smooth_centres);
+	#composite_imp2.show();
+	#MyWaitForUser("pause", "after straightening in first axis");
+	#composite_imp2.hide();
 	composite_imp3 = straighten_vessel(composite_imp2, xyz_smooth_centres, it=2);
-	return composite_imp3;
+	composite_imp2.close();
+	#composite_imp3.show();
+	#MyWaitForUser("pause", "after straightening in second axis");
+	#composite_imp3.hide();
+	#utils.convert_multichannel_stack_to_16bit(composite_imp3);
+	return composite_imp3, info;
 
 #hsimp.addImageListener(UpdateRoiImageListener(rois));
 
