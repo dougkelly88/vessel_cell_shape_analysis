@@ -2,7 +2,7 @@
 #
 # D. J. Kelly, 2018-12-05, douglas.kelly@riken.jp
 
-import os, re
+import os, re, csv
 from datetime import datetime
 from ij import IJ
 from ij import WindowManager as WM
@@ -180,6 +180,29 @@ def choose_series(filepath, info):
 	reader.close();
 	return import_opts, info
 
+def save_projection_csv(output_path, info, data, headers=None):
+	"""save results of projection shape analysis to csv"""
+	if headers is None:
+		headers = ["Input image file", "Analysis output folder", "Vessel type", "Cell area", "Cell aspect ratio"];
+	csv_path = os.path.join(os.path.dirname(output_path), "results.csv");
+	csv_exists = os.path.isfile(csv_path);
+	f_open_mode = 'ab' if csv_exists else 'wb';
+	f = open(csv_path, f_open_mode);
+	try:
+		writer = csv.writer(f);
+		if not csv_exists:
+			writer.writerow(headers);
+		writer.writerow([info.get_input_file_path(), 
+				   output_path,
+				   info.get_vessel_type(), 
+				   data[0], 
+				   data[1]]);
+	except IOError as e:
+		print("problem saving, {}".format(e));
+	finally:
+		f.close();
+	return;
+				
 def import_iq3_metadata(metadata_path):
 	"""import basic image metadata based on the metadata saved by iQ3 software at acquisition time"""
 	x_fmt_str = 'x \: (?P<x_pixels>\d+\.?\d*) \* (?P<x_physical_size>\d+\.?\d*) \: (?P<x_unit>\w+)';
