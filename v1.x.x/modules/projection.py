@@ -1,8 +1,9 @@
 import math, sys, os
 from ij import ImageStack, ImagePlus, IJ, Prefs
 from ij.gui import PolygonRoi, Roi, WaitForUserDialog, Line, ProfilePlot
-from ij.plugin import Duplicator, MontageMaker, ChannelSplitter, ImageCalculator
+from ij.plugin import Duplicator, MontageMaker, ChannelSplitter, ImageCalculator, RGBStackMerge
 from ij.process import FloatProcessor, AutoThresholder
+#from ij.io import FileSaver
 
 def make_tiled_imp(imp):
 	"""generate a ImageProcessor that is the input tiled 3 time horizontally"""
@@ -75,8 +76,9 @@ def do_unwrap(tile_imp, unwrap_axis, imp_title=None):
 		tile_imp.setTitle("twisted and unwrapped")
 	return tile_imp;
 	
-def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=False):
+def do_angular_projection(imp, output_path, max_r_pix=60, min_r_pix=10, generate_roi_stack=False):
 	"""perform ray-based projection of vessel wall, c.f. ICY TubeSkinner (Lancino 2018)"""
+	input_n_ch = imp.getNChannels();
 	Prefs.blackBackground = True;
 	print("do angular projection input imp = " + str(imp));
 	split_chs = ChannelSplitter().split(imp);
@@ -84,7 +86,6 @@ def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=Fa
 	IJ.setAutoThreshold(mch_imp, "IsoData dark stack");
 	egfp_imp = split_chs[1];
 	proj_imp = Duplicator().run(egfp_imp);
-	cl_imp = split_chs[2];
 	if generate_roi_stack:
 		egfp_imp_disp = Duplicator().run(egfp_imp);
 		roi_stack = IJ.createImage("rois", egfp_imp.getWidth(), egfp_imp.getHeight(), egfp_imp.getNSlices(), 16);
@@ -92,9 +93,12 @@ def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=Fa
 	centres = [];
 	projected_im_pix = [];
 	ring_rois = [];
-	for zidx in range(cl_imp.getNSlices()):
+	#merged_radius_imp = RGBStackMerge().mergeChannels([mch_imp, egfp_imp_disp], True);
+	##IJ.run(merged_radius_imp, "16-bit", "");
+
+	for zidx in range(proj_imp.getNSlices()):
 		if ((zidx+1) % 100)==0:
-			print("Progress = " + str(round(100*(float(zidx+1)/cl_imp.getNSlices()))));
+			print("Progress = " + str(round(100*(float(zidx+1)/proj_imp.getNSlices()))));
 		projected_im_row = [];
 		proj_imp.setZ(zidx+1);
 		mch_imp.setZ(zidx+1);
@@ -149,11 +153,18 @@ def do_angular_projection(imp, max_r_pix=60, min_r_pix=10, generate_roi_stack=Fa
 
 	if generate_roi_stack:
 		roi_stack.show();
-		egfp_imp_disp.show();
-		# merge?
+		#egfp_imp_disp.show();
+		#mch_imp.show();
+		merged_radius_imp = RGBStackMerge().mergeChannels([mch_imp, egfp_imp_disp, None, None, None, None, roi_stack], True)
+		IJ.run(merged_radius_imp, "16-bit", "");
+		merged_radius_imp.show();
+		#IJ.saveAsTiff(merged_radius_imp, os.path.join(output_path, "radius ROIs.tif"))
+		#FileSaver(merged_radius_imp).saveAsTiffStack(os.path.join(output_path, "identified vessel radius along vessel axis.tif"));
 	else:
 		roi_stack = None;
-	return out_imp, roi_stack, ring_rois, centres
+	roi_stack.changes = False;
+	roi_stack.close();
+	return out_imp, merged_radius_imp, ring_rois, centres
 
 def calculate_mean_r(imp, ring_rois, centres):
 	"""calculate the average distance of the cell surface from the vessel axis"""
@@ -211,7 +222,6 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val):
 	r_imp = do_unwrap(tile_r_imp, unwrap_axis, imp_title=r_imp.getTitle());
 	r_imp = ImageCalculator().run("Multiply create", r_imp, mask_imp);
 	IJ.run(r_imp, "Cyan Hot", "");
-	
 	return r_imp, mask_imp;
 
 def calculate_area_and_aspect_ratio(r_imp, mask_imp, raw_voxel_side):
