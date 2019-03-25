@@ -1,9 +1,10 @@
 import os, re
 from datetime import datetime
 from ij import ImagePlus, IJ, ImageStack
+from ij import WindowManager as WM
 from ij.gui import WaitForUserDialog
 from ij.process import FloatProcessor, StackProcessor
-from ij.plugin import ChannelSplitter, RGBStackMerge, Duplicator
+from ij.plugin import ChannelSplitter, RGBStackMerge, Duplicator, HyperStackConverter
 
 def rot_around_x(input_stack):
 	"""do rotation around x axis"""
@@ -233,6 +234,72 @@ def robust_convertStackToGray8(imp):
 	IJ.showProgress(1.0);
 	imp.setSlice(current_slice);
 	return imp;
+
+def convert_multichannel_stack_to_Xbit(imp, bitdepth=8):
+	"""convert multichannel z stacks to X bits"""
+	if bitdepth not in [8, 16, 32]:
+		raise NotImplementedError;
+	if imp.getType()==ImagePlus.GRAY32:
+		if bitdepth==32:
+			return imp;
+	elif imp.getType()==ImagePlus.GRAY16:
+		if bitdepth==16:
+			return imp;
+	elif imp.getType()==ImagePlus.GRAY8:
+		if bitdepth==8:
+			return imp;
+	print("Memory usage = {:.2E}".format(IJ.currentMemory()));
+	current_slice = imp.getCurrentSlice();
+	current_channel = imp.getChannel();
+	n_c = imp.getNChannels();
+	n_z = imp.getNSlices();
+	progress_inc = 1 if n_z/20 < 1 else n_z/20;
+	stack = imp.getStack();
+	out_stack = ImageStack(imp.getWidth(), imp.getHeight());
+	for idx in range(n_z * n_c):
+		label = stack.getSliceLabel(1);
+		ip = stack.getProcessor(1);
+		stack.deleteSlice(1);
+		if bitdepth==16:
+			out_stack.addSlice(label, ip.convertToShort(False));
+		elif bitdepth==8:
+			out_stack.addSlice(label, ip.convertToByte(False));
+		elif bitdepth==32:
+			out_stack.addSlice(label, ip.convertToFloat(False));
+		else:
+			raise NotImplementedError;
+		IJ.showProgress(float(idx)/(n_z * n_c));
+		if idx%progress_inc==0:
+			IJ.showStatus("Converting stack to 16-bits: {}/{}".format(idx, n_z));
+	title = imp.getTitle();
+	luts = imp.getLuts();
+	#print("luts = {}".format(luts));
+	imp.changes = False;
+	imp.close();
+	imp = ImagePlus(title +  " 16-bit converted", out_stack);
+#	for ch in range(n_c):
+#		imp.setC(ch+1);
+#		imp.setLut(luts[ch]);
+#	imp.setDisplayMode(IJ.COMPOSITE);
+	if n_c>1:
+		imp = HyperStackConverter.toHyperStack(imp, n_c, n_z, 1, "Composite");
+	imp.show();
+	IJ.showProgress(0);
+	print("NEW Memory usage = {:.2E}".format(IJ.currentMemory()));
+	return imp;
+
+
+def reduce_memory_load():
+	"""convert all open 32-bit images to 16-bit with no heed for possible problems this may cause"""
+	titles = WM.getImageTitles();
+	print("iages = {}".format(titles));
+	for t in titles:
+		imp = WM.getImage(t);
+		if imp.getType() == ImagePlus.GRAY32:
+			print("Converting {} from 32-bit to 16-bit...".format(t));
+			print("Memory usage = {}".format(IJ.currentMemory()));
+			IJ.run(imp, "16-bit", "");
+			print("Memory usage = {}".format(IJ.currentMemory()));
 
 #path = "C:\\Users\\dougk\\Desktop\\test image 2.tif";
 #imp = IJ.openImage(path);
