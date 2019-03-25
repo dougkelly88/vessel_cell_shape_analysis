@@ -19,12 +19,12 @@ def MyWaitForUser(title, message):
 		raise KeyboardInterrupt("Run canceled");
 	return;
 
-class UpdateRoiImageListener(ImageListener):
+class ManualSegmentationImageListener(ImageListener):
 	"""class to support updating ROI from list upon change of frame"""
 	def __init__(self, roi_list):
 		self.last_slice = 1;
 		self.roi_list = roi_list;
-		print("UpdateRoiImageListener started");
+		print("ManualSegmentationImageListener started");
 
 	def imageUpdated(self, imp):
 		roi = imp.getRoi();
@@ -60,10 +60,10 @@ class UpdateRoiImageListener(ImageListener):
 #		print(self.roi_list);
 		
 	def imageOpened(self, imp):
-		print("UpdateRoiImageListener: image opened");
+		print("ManualSegmentationImageListener: image opened");
 			
 	def imageClosed(self, imp):
-		print("UpdateRoiImageListener: image closed");
+		print("ManualSegmentationImageListener: image closed");
 		imp.removeImageListener(self);
 
 	def getRoiList(self):
@@ -121,12 +121,8 @@ def catmull_rom_chain(p, n_points=100):
 	for i in range(sz-3):
 		cc = catmull_rom_spline(p[i], p[i+1], p[i+2], p[i+3], n_points=n_points)
 		c.extend(cc)
-#	print("do linear interp between p[-2] = {} and p[-1] = {}".format(p[-2], p[-1]));
-#	MyWaitForUser("pause", "pause");
 	lininterp = linear_interp(p[-2], p[-1], n_points=n_points);
-#	print("lininterp = {}".format(lininterp));
 	c.extend(lininterp);
-#	MyWaitForUser("pause", "pause");
 	return c;
 
 def resample_z(catmull_rom_points, z_points):
@@ -188,7 +184,7 @@ def new_resample_z(spline_points, target_zs):
 	# DO SMOOTHING OF OUTPUT POINTS?
 	return out_points, closest_idxs;
 
-listener = UpdateRoiImageListener([]);
+listener = ManualSegmentationImageListener([]);
 imp.addImageListener(listener);
 IJ.setTool("elliptical");
 step_size = 100;
