@@ -149,8 +149,8 @@ class PrescreenInfo(object):
 		return;
 
 	def load_info_from_json(self, file_path):
+		f = open(file_path, 'r');
 		try:
-			f = open(file_path, 'r');
 			dct = json.loads(f.read());
 			if "__prescreeninfo__" in dct:
 				self.set_input_file_path(dct["input_file_path"]);
@@ -171,7 +171,8 @@ class PrescreenInfo(object):
 		except IOError:
 			print("IOError reading from JSON file");
 			return False;
-		except: 
+		except Exception as e: 
+			print("Error: {}".format(e.message));
 			return False;
 		finally:
 			f.close();
