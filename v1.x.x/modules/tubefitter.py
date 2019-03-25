@@ -280,15 +280,20 @@ def convex_hull_pts(pts):
 
 def split_and_rotate(imp, info):
 	"""return image to segment on, image to project out, and images to display"""
-	# for now, assume that these are ISVs and that embryo is mounted in familiar fashion. First of these can be developed out...
 	IJ.run("Enhance Contrast", "saturated=0.35");
 	seg_ch_idx, proj_ch_idx = ui.choose_segmentation_and_projection_channels(info);
 	channels  = ChannelSplitter().split(imp);
 	seg_imp = Duplicator().run(channels[seg_ch_idx]); # use Duplicator to decouple - can do smarter to save memory?
 	proj_imp = Duplicator().run(channels[proj_ch_idx]);
-	rot_seg_imp = utils.rot3d(seg_imp, axis='x');
+	if "isv" not in info.get_vessel_type():
+		print("isn't ISV");
+		rot_axis = 'y';
+	else:
+		print("is ISV");
+		rot_axis = 'x';
+	rot_seg_imp = utils.rot3d(seg_imp, axis=rot_axis);
 	rot_seg_imp.setTitle("rot_seg_imp");
-	rot_proj_imp = utils.rot3d(proj_imp, axis='x');
+	rot_proj_imp = utils.rot3d(proj_imp, axis=rot_axis);
 	rot_proj_imp.setTitle("rot_proj_imp");
 	egfp_mch_imps = [];
 	egfp_idx = 0 if "gfp" in info.ch1_label.lower() else 1;
@@ -299,7 +304,7 @@ def split_and_rotate(imp, info):
 		elif ch_idx==proj_ch_idx:
 			egfp_mch_imps.append(Duplicator().run(rot_proj_imp));
 		else:
-			egfp_mch_imps.append(utils.rot3d(Duplicator().run(channels[ch_idx]), axis='x'));
+			egfp_mch_imps.append(utils.rot3d(Duplicator().run(channels[ch_idx]), axis=rot_axis));
 	imp.changes=False;
 	imp.close();
 	seg_imp.changes = False;
@@ -312,19 +317,22 @@ def lin_interp_1d(old_x, old_y, new_x):
 	"""stretch a curve described by points [(old_x, old_y)] to cover domain given by [new_x]"""
 	xpp = [o * float(len(old_x)-1)/(len(new_x)-1) for o in new_x]
 	new_y = [old_y[0]];
+	epsilon = 0.0000001;
 	for o in xpp:
 	    if (o!=xpp[0]) & (o!=xpp[-1]):
 	        xa = int(math.floor(o));
 	        xb = int(math.ceil(o));
 	        ya = old_y[xa];
 	        yb = old_y[xb];
-	        new_y.append(ya + (yb - ya)*(o - xa)/(xb - xa));
+	        new_y.append(ya + (yb - ya)*(o - xa)/(xb - xa + epsilon));
 	new_y.append(old_y[-1]);
 	return new_y;
 	
 def straighten_vessel(imp, smooth_centres, it=1):
 	"""use IJ straigtening tool to deal with convoluted vessels"""
 	print("straighten vessel input image dims = " + str(imp.getWidth()) + "x" + str(imp.getHeight()));
+	print("Smooth centers = {}".format(smooth_centres));
+	input_n_ch = imp.getNChannels();
 	rot_imp = utils.rot3d(imp, axis='x');
 	if it==1:
 		roi = PolygonRoi([x for x, y, z in smooth_centres], [z for x, y, z in smooth_centres], Roi.FREELINE);
@@ -337,12 +345,13 @@ def straighten_vessel(imp, smooth_centres, it=1):
 	split_ch = ChannelSplitter().split(rot_imp);
 	mch_imp = split_ch[0];
 	egfp_imp = split_ch[1];
-	roi_imp = split_ch[2];
+	if input_n_ch>2:
+		roi_imp = split_ch[2];
 
-	roi_imp.setRoi(roi);
+		roi_imp.setRoi(roi);
 
 	for zidx in range(egfp_imp.getNSlices()):
-		for chidx in range(3):
+		for chidx in range(input_n_ch):
 			split_ch[chidx].setZ(zidx+1);
 			split_ch[chidx].setRoi(roi);
 			ip = Straightener().straightenLine(split_ch[chidx], 150);
@@ -361,23 +370,34 @@ def straighten_vessel(imp, smooth_centres, it=1):
 
 	egfp_out_imp = ImagePlus("Straightened EGFP", egfp_straight_stack);
 	mch_out_imp = ImagePlus("Straightened mCh", mch_straight_stack);
-	roi_out_imp = ImagePlus("Straightened ROI", roi_straight_stack);
+	if input_n_ch>2:
+		roi_out_imp = ImagePlus("Straightened ROI", roi_straight_stack);
 	if it==2: 
 		egfp_out_imp = utils.rot3d(egfp_out_imp, axis='y');
 		mch_out_imp = utils.rot3d(mch_out_imp, axis='y');
-		roi_out_imp = utils.rot3d(roi_out_imp, axis='y');
+		if input_n_ch>2:
+			roi_out_imp = utils.rot3d(roi_out_imp, axis='y');
 	egfp_out_imp.show();
 	mch_out_imp.show();
-	roi_out_imp.show();
-	IJ.run("Merge Channels...", "c1=[" + mch_out_imp.getTitle() + 
-										"] c2=[" + egfp_out_imp.getTitle() + 
-										"] c7=[" + roi_out_imp.getTitle() + "] create keep");
+	if input_n_ch>2:
+		roi_out_imp.show();
+		new_composite = RGBStackMerge().mergeChannels([mch_out_imp, egfp_out_imp, None, None, None, None, roi_out_imp], True);
+		#IJ.run("Merge Channels...", "c1=[" + mch_out_imp.getTitle() + 
+		#								"] c2=[" + egfp_out_imp.getTitle() + 
+		#								"] c7=[" + roi_out_imp.getTitle() + "] create keep");
+		roi_out_imp.close();
+	else:
+		new_composite = RGBStackMerge().mergeChannels([mch_out_imp, egfp_out_imp], True);
+		#IJ.run("Merge Channels...", "c1=[" + mch_out_imp.getTitle() + 
+		#								"] c2=[" + egfp_out_imp.getTitle() + 
+		#								"] c7=[" + roi_out_imp.getTitle() + "] create keep");
+
 #	WaitForUserDialog("pause").show();
 #	if it==1:
 	egfp_out_imp.close()
 	mch_out_imp.close()
-	roi_out_imp.close()
-	new_composite = IJ.getImage();
+	
+	#new_composite = IJ.getImage();
 	FileSaver(new_composite).saveAsTiffStack(os.path.join(output_path, "after rotation " + str(it) + ".tif"));
 	return new_composite;
 
