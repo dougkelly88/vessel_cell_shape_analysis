@@ -203,7 +203,7 @@ def calculate_mean_r(imp, ring_rois, centres):
 	mask_imp.close();
 	return mean_r;
 
-def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val):
+def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val, smooth_radius_pix=1):
 	"""for each point in the projection, calculate the distance to the vessel axis and present as an image"""
 	fp = imp.getProcessor()
 	fp.setThreshold(threshold_val, fp.maxValue(), FloatProcessor.NO_LUT_UPDATE);
@@ -236,6 +236,7 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val):
 	r_imp = do_unwrap(tile_r_imp, unwrap_axis, imp_title=r_imp.getTitle());
 	r_imp = ImageCalculator().run("Multiply create", r_imp, mask_imp);
 	IJ.run(r_imp, "Cyan Hot", "");
+	IJ.run(r_imp, "Median...", "radius={}".format(smooth_radius_pix));
 	return r_imp, mask_imp;
 
 def calculate_area_and_aspect_ratio(r_imp, mask_imp, raw_voxel_side):
