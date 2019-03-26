@@ -15,6 +15,19 @@ from loci.plugins.in import ImporterOptions, ThumbLoader
 from java.awt import Panel, Dimension, Checkbox, CheckboxGroup
 from javax.swing import Box
 
+def MyWaitForUser(title, message):
+	"""non-modal dialog with option to cancel the analysis"""
+	dialog = NonBlockingGenericDialog(title);
+	dialog.setCancelLabel("Cancel analysis");
+	if type(message) is list:
+		for line in message:
+			dialog.addMessage(line);
+	else:
+		dialog.addMessage(message);
+	dialog.showDialog();
+	if dialog.wasCanceled():
+		raise KeyboardInterrupt("Run canceled");
+	return;
 
 def file_location_chooser(default_directory):
 	"""choose input data location"""
@@ -187,7 +200,13 @@ def save_projection_csv(output_path, info, data, headers=None):
 	csv_path = os.path.join(os.path.dirname(output_path), "results.csv");
 	csv_exists = os.path.isfile(csv_path);
 	f_open_mode = 'ab' if csv_exists else 'wb';
-	f = open(csv_path, f_open_mode);
+	fopen_ok = False;
+	while not fopen_ok:
+		try:
+			f = open(csv_path, f_open_mode);
+			fopen_ok = True;
+		except Exception as e:
+			MyWaitForUser("Error", "Having trouble opening CSV to save data - is it open elsewhere? \n {}".format(e.message));
 	try:
 		writer = csv.writer(f);
 		if not csv_exists:
