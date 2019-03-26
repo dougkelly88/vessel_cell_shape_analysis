@@ -1,0 +1,17 @@
+{
+  "z_crop_roi": null,
+  "input_file_series": 0,
+  "embryo_id": "1a",
+  "experiment_id": "test",
+  "ch2_label": "EGFP",
+  "input_file_path": "D:\\data\\test\\test.tif",
+  "xy_crop_rect": "java.awt.Rectangle[x=0,y=1047,width=702,height=336]",
+  "z_plane_spacing_um": 0.4,
+  "metadata_file_path": "D:\\data\\test\\test.txt",
+  "xy_pixel_size_um": 0.1,
+  "mosaic_labeled_ch": 2,
+  "z_crop_frames": [ 225, 405 ],
+  "vessel_type": "xISV",
+  "__prescreeninfo__": true,
+  "ch1_label": "dextran-rhodamine"
+}
