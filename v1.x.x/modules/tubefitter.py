@@ -285,7 +285,7 @@ def split_and_rotate(imp, info):
 	channels  = ChannelSplitter().split(imp);
 	seg_imp = Duplicator().run(channels[seg_ch_idx]); # use Duplicator to decouple - can do smarter to save memory?
 	proj_imp = Duplicator().run(channels[proj_ch_idx]);
-	if "isv" not in info.get_vessel_type():
+	if "isv" not in info.get_vessel_type().lower():
 		print("isn't ISV");
 		rot_axis = 'y';
 	else:
