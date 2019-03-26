@@ -1,9 +1,23 @@
 import math, sys, os
 from ij import ImageStack, ImagePlus, IJ, Prefs
-from ij.gui import PolygonRoi, Roi, WaitForUserDialog, Line, ProfilePlot
+from ij.gui import PolygonRoi, Roi, WaitForUserDialog, Line, ProfilePlot, NonBlockingGenericDialog
 from ij.plugin import Duplicator, MontageMaker, ChannelSplitter, ImageCalculator, RGBStackMerge
 from ij.process import FloatProcessor, AutoThresholder
 #from ij.io import FileSaver
+
+def MyWaitForUser(title, message):
+	"""non-modal dialog with option to cancel the analysis"""
+	dialog = NonBlockingGenericDialog(title);
+	dialog.setCancelLabel("Cancel analysis");
+	if type(message) is list:
+		for line in message:
+			dialog.addMessage(line);
+	else:
+		dialog.addMessage(message);
+	dialog.showDialog();
+	if dialog.wasCanceled():
+		raise KeyboardInterrupt("Run canceled");
+	return;
 
 def make_tiled_imp(imp):
 	"""generate a ImageProcessor that is the input tiled 3 time horizontally"""
@@ -21,7 +35,7 @@ def twist_and_unwrap(imp):
 	tile_imp = make_tiled_imp(imp);
 	tile_imp.show();
 	IJ.setTool("freeline");
-	WaitForUserDialog("Input required...", "Please draw the line down which unwrapping should occur...").show();
+	MyWaitForUser("Input required...", "Please draw the line down which unwrapping should occur...");
 	roi = tile_imp.getRoi();
 	if roi is None:
 		raise ValueError;
