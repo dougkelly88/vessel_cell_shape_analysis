@@ -7,7 +7,7 @@ from datetime import datetime
 from ij import IJ
 from ij import WindowManager as WM
 from ij.io import OpenDialog, DirectoryChooser, FileSaver
-from ij.gui import GenericDialog, YesNoCancelDialog
+from ij.gui import GenericDialog, YesNoCancelDialog, NonBlockingGenericDialog
 from loci.plugins import BF as bf
 from loci.formats import ImageReader, MetadataTools
 from loci.formats.gui import BufferedImageReader
