@@ -2,7 +2,10 @@ import math, sys, os
 from ij import ImageStack, ImagePlus, IJ, Prefs
 from ij.gui import PolygonRoi, Roi, WaitForUserDialog, Line, ProfilePlot, NonBlockingGenericDialog
 from ij.plugin import Duplicator, MontageMaker, ChannelSplitter, ImageCalculator, RGBStackMerge
+from ij.plugin.filter import ParticleAnalyzer
 from ij.process import FloatProcessor, AutoThresholder
+from ij.plugin.frame import RoiManager
+from ij.measure import ResultsTable
 #from ij.io import FileSaver
 
 def MyWaitForUser(title, message):
@@ -90,7 +93,7 @@ def do_unwrap(tile_imp, unwrap_axis, imp_title=None):
 		tile_imp.setTitle("twisted and unwrapped")
 	return tile_imp;
 	
-def do_angular_projection(imp, output_path, max_r_pix=60, min_r_pix=10, generate_roi_stack=False):
+def do_angular_projection(imp, output_path, max_r_pix=60, min_r_pix=10, generate_roi_stack=False, smooth_radius_pix=1):
 	"""perform ray-based projection of vessel wall, c.f. ICY TubeSkinner (Lancino 2018)"""
 	input_n_ch = imp.getNChannels();
 	Prefs.blackBackground = True;
@@ -112,7 +115,7 @@ def do_angular_projection(imp, output_path, max_r_pix=60, min_r_pix=10, generate
 
 	for zidx in range(proj_imp.getNSlices()):
 		if ((zidx+1) % 100)==0:
-			print("Progress = " + str(round(100*(float(zidx+1)/proj_imp.getNSlices()))));
+			print("Progress = {}%".format(round(100*(float(zidx+1)/proj_imp.getNSlices()))));
 		projected_im_row = [];
 		proj_imp.setZ(zidx+1);
 		mch_imp.setZ(zidx+1);
@@ -124,39 +127,50 @@ def do_angular_projection(imp, output_path, max_r_pix=60, min_r_pix=10, generate
 		mask_imp = ImagePlus("mask", bp);
 		IJ.run(mask_imp, "Create Selection", "");
 		roi = mask_imp.getRoi();
-		proj_imp.setRoi(roi);
-		IJ.run(proj_imp, "Set...", "value=0 slice");
-		IJ.run(proj_imp, "Make Inverse", "");
-		roi = proj_imp.getRoi();
-		centre = (roi.getStatistics().xCentroid, roi.getStatistics().yCentroid);
-		centres.append(centre);
-		ring_roi_xs = [];
-		ring_roi_ys = [];
-		for theta in range(360):
-			pt1 = (centre[0] + min_r_pix * math.cos(math.radians(theta)), 
-					centre[1] + min_r_pix * math.sin(math.radians(theta)));
-			pt2 = (centre[0] + max_r_pix * math.cos(math.radians(theta)), 
-					centre[1] + max_r_pix * math.sin(math.radians(theta)));
-			roi = Line(pt1[0], pt1[1], pt2[0], pt2[1]);
+		if roi is not None:
 			proj_imp.setRoi(roi);
-			profile = roi.getPixels();
-			projected_im_row.append(max(profile));
-			try:
-				ring_roi_xs.append(roi.getContainedPoints()[profile.index(max(profile))].x);
-			except IndexError:
-				ring_roi_xs.append(pt2[0]);
-			try:
-				ring_roi_ys.append(roi.getContainedPoints()[profile.index(max(profile))].y);
-			except IndexError:
-				ring_roi_ys.append(pt2[1]);
+			IJ.run(proj_imp, "Set...", "value=0 slice");
+			proj_imp.setRoi(roi);
+			IJ.run(proj_imp, "Make Inverse", "");
+			roi = proj_imp.getRoi();
+			centre = (roi.getStatistics().xCentroid, roi.getStatistics().yCentroid);
+			centres.append(centre);
+			ring_roi_xs = [];
+			ring_roi_ys = [];
+			for theta in range(360):
+				pt1 = (centre[0] + min_r_pix * math.cos(math.radians(theta)), 
+						centre[1] + min_r_pix * math.sin(math.radians(theta)));
+				pt2 = (centre[0] + max_r_pix * math.cos(math.radians(theta)), 
+						centre[1] + max_r_pix * math.sin(math.radians(theta)));
+				roi = Line(pt1[0], pt1[1], pt2[0], pt2[1]);
+				proj_imp.setRoi(roi);
+				profile = roi.getPixels();
+				projected_im_row.append(max(profile));
+				try:
+					ring_roi_xs.append(roi.getContainedPoints()[profile.index(max(profile))].x);
+				except IndexError:
+					ring_roi_xs.append(pt2[0]);
+				try:
+					ring_roi_ys.append(roi.getContainedPoints()[profile.index(max(profile))].y);
+				except IndexError:
+					ring_roi_ys.append(pt2[1]);
 			proj_imp.killRoi();
-		ring_roi = PolygonRoi(ring_roi_xs, ring_roi_ys, Roi.FREELINE);
-		ring_rois.append(ring_roi);
+			ring_roi = PolygonRoi(ring_roi_xs, ring_roi_ys, Roi.FREELINE);
+			ring_rois.append(ring_roi);
+		else:
+			ring_roi = None;
+			ring_rois.append(None);
+			projected_im_row = [0 for _ in range(360)];
 		if generate_roi_stack:
 			roi_stack.setZ(zidx+1);
-			roi_stack.setRoi(ring_roi);
-			IJ.run(roi_stack, "Line to Area", "");
-			IJ.run(roi_stack, "Set...", "value=" + str(roi_stack.getProcessor().maxValue()) + " slice");
+			#merged_radius_imp.setZ(zidx+1);
+			if ring_roi is not None:
+				roi_stack.setRoi(ring_roi);
+				#merged_radius_imp.setRoi()
+				IJ.run(roi_stack, "Line to Area", "");
+				IJ.run(roi_stack, "Set...", "value=" + str(roi_stack.getProcessor().maxValue()) + " slice");
+				#IJ.run(merged_radius_imp, "Line to Area", "");
+				#IJ.run(merged_radius_imp, "Set...", "value=" + str(roi_stack.getProcessor().maxValue()) + " slice");
 		#egfp_imp.setRoi(ring_roi);
 		projected_im_pix.append(projected_im_row);
 		
@@ -164,6 +178,7 @@ def do_angular_projection(imp, output_path, max_r_pix=60, min_r_pix=10, generate
 #		ch.close();
 
 	out_imp = ImagePlus("projected", FloatProcessor([list(x) for x in zip(*projected_im_pix)]));
+	IJ.run(out_imp, "Median...", "radius={}".format(smooth_radius_pix));
 
 	if generate_roi_stack:
 		roi_stack.show();
@@ -223,41 +238,71 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val, smooth
 	IJ.run(mask_imp, "Fill Holes", "");
 	#WaitForUserDialog("pasue - filled holes").show();
 	IJ.run(mask_imp, "Divide...", "value=255");
-	#WaitForUserDialog("pasue - scaled to 0-1").show();
-	#mask_imp.show();
 
 	r_list = [];
 	for lidx, (roi, centre) in enumerate(zip(ring_rois, centres)):
-		r_sublist = [math.sqrt((x - centre[0])**2 + (y - centre[1])**2) for x, y in zip(roi.getPolygon().xpoints, roi.getPolygon().ypoints)];
+		if roi is None:
+			r_sublist = [0 for _ in range(360)];
+		else:
+			r_sublist = [math.sqrt((x - centre[0])**2 + (y - centre[1])**2) for x, y in zip(roi.getPolygon().xpoints, roi.getPolygon().ypoints)];
 		r_list.append(r_sublist);
 		
 	r_imp = ImagePlus("Radii", FloatProcessor([list(x) for x in zip(*r_list)]));
 	tile_r_imp = make_tiled_imp(r_imp);
 	r_imp = do_unwrap(tile_r_imp, unwrap_axis, imp_title=r_imp.getTitle());
-	r_imp = ImageCalculator().run("Multiply create", r_imp, mask_imp);
-	IJ.run(r_imp, "Cyan Hot", "");
 	IJ.run(r_imp, "Median...", "radius={}".format(smooth_radius_pix));
-	return r_imp, mask_imp;
+	r_imp_masked = ImageCalculator().run("Multiply create", r_imp, mask_imp);
+	IJ.run(r_imp_masked, "Cyan Hot", "");
+	return r_imp_masked, mask_imp, r_imp;
+
+def keep_largest_blob(imp):
+	"""remove all blobs other than the largest by area"""
+	rt = ResultsTable();
+	mxsz = imp.width * imp.height;
+	roim = RoiManager(False);
+	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE, rt, 0, mxsz);
+	pa.setRoiManager(roim);
+	
+	for idx in range(1, imp.getImageStackSize()+1):
+		roim.reset();
+		rt.reset();
+		imp.setPosition(idx);
+		pa.analyze(imp);
+		rt_areas = rt.getColumn(rt.getColumnIndex("Area")).tolist();
+		mx_ind = rt_areas.index(max(rt_areas))
+		indices_to_remove = [a for a in range(0,len(rt_areas)) if a != mx_ind];
+		indices_to_remove.reverse();
+		for rem_idx in indices_to_remove:
+			roim.select(imp, rem_idx);
+			IJ.run(imp, "Set...", "value=0 slice");
+	imp.killRoi();
+	roim.reset();
+	roim.close();
 
 def calculate_area_and_aspect_ratio(r_imp, mask_imp, raw_voxel_side):
 	"""return the area and aspect ratio of the cell based on the projected image and convert to real-world units"""
 	mask_imp.show();
 	bp = mask_imp.getProcessor();
 	bp.setThreshold(0.5, bp.maxValue(), FloatProcessor.NO_LUT_UPDATE);
+	keep_largest_blob(mask_imp);
 	IJ.run(mask_imp, "Create Selection", "");
 	roi = mask_imp.getRoi();
 	r_imp.setRoi(roi);
 	roi = r_imp.getRoi();
+	# MyWaitForUser("pause", "pause to check mask has been filtered by size");
+	stats = roi.getStatistics();
+	print("stats = {}".format(stats));
 	raw_height = roi.getBounds().height;
 	min_y = roi.getBounds().y;
 	widths = [0] * raw_height;
 	fp = r_imp.getProcessor();
 	for point in roi:
 		widths[point.y - min_y] = widths[point.y - min_y] + fp.getPixelValue(point.x, point.y) * raw_voxel_side * 2 * math.pi/360;
+		#widths[point.y - min_y] = widths[point.y - min_y] + 50 * raw_voxel_side * 2 * math.pi/360; # debug
 	aspect_ratio_circumferential_to_axial = (sum(widths)/len(widths)) / (raw_height * raw_voxel_side);
 	area = sum(widths) * raw_voxel_side;
 	
-	return area, aspect_ratio_circumferential_to_axial;
+	return area, aspect_ratio_circumferential_to_axial, stats.min * raw_voxel_side, stats.max * raw_voxel_side;
 	
 def do_slicewise_unwrap(imp):
 	"""at each position along the lumen axis, get a shell from around the lumen and take the maximum in the cell channel"""
