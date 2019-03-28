@@ -215,7 +215,9 @@ def save_projection_csv(output_path, info, data, headers=None):
 				   output_path,
 				   info.get_vessel_type(), 
 				   data[0], 
-				   data[1]]);
+				   data[1], 
+				   data[2], 
+				   data[3]]);
 	except IOError as e:
 		print("problem saving, {}".format(e));
 	finally:
