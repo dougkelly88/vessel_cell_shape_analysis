@@ -113,8 +113,9 @@ def do_angular_projection(imp, output_path, vessel_axis, max_r_pix=60, min_r_pix
 	projected_im_pix = [];
 	ring_rois = [];
 	centre = (proj_imp.getWidth()/2, proj_imp.getHeight()/2)
-	for _, _, z in vessel_axis:
-		z = int(z);
+	for z in range(proj_imp.getNSlices()):
+		z = z+1;
+		print("z = {}".format(z));
 		if ((z) % 100)==0:
 			print("Progress = {}%".format(round(100*(float(z)/proj_imp.getNSlices()))));
 		projected_im_row = [];
