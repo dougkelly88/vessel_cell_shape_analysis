@@ -281,6 +281,7 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val, smooth
 	IJ.run(r_imp, "Median...", "radius={}".format(smooth_radius_pix));
 	r_imp_masked = ImageCalculator().run("Multiply create", r_imp, mask_imp);
 	IJ.run(r_imp_masked, "Cyan Hot", "");
+	IJ.run(mask_imp, "Green", "");
 	return r_imp_masked, mask_imp, r_imp;
 
 def keep_largest_blob(imp):
