@@ -54,9 +54,10 @@ def MyWaitForUser(title, message):
 
 class ManualSegmentationImageListener(ImageListener):
 	"""class to support updating ROI from list upon change of frame"""
-	def __init__(self, roi_list):
+	def __init__(self, roi_list, maj_min_axes_list):
 		self.last_slice = 1;
 		self.roi_list = roi_list;
+		self.maj_min_axes_list = maj_min_axes_list;
 		print("ManualSegmentationImageListener started");
 
 	def imageUpdated(self, imp):
@@ -68,6 +69,7 @@ class ManualSegmentationImageListener(ImageListener):
 		if roi is not None:
 			if not roi.isArea():
 				pt = roi.getContainedPoints()[0];
+				maj_min_axes = (0, 0);
 			else:
 				rot_center = roi.getRotationCenter(); 
 				x = int(rot_center.xpoints[0]);
@@ -75,12 +77,16 @@ class ManualSegmentationImageListener(ImageListener):
 				print("x = {}".format(x));
 				print("y = {}".format(y));
 				pt = Point(x, y);
+				stats = roi.getStatistics();
+				maj_min_axes = (stats.major, stats.minor);
 			print("adding {} to list at slice {}".format(pt, self.last_slice));
 			if self.last_slice in [z for (x, y, z) in self.roi_list]:
 				self.roi_list[[z for (x, y, z) in self.roi_list].index(self.last_slice)] = (pt.x, pt.y, slc);
+				self.maj_min_axes_list[[z for (x, y, z) in self.roi_list].index(self.last_slice)] = (maj_min_axes[0], maj_min_axes[1], slc);
 				print(self.roi_list);
 			else:
 				self.roi_list.append((pt.x, pt.y, self.last_slice));
+				self.maj_min_axes_list.append((maj_min_axes[0], maj_min_axes[1], self.last_slice));
 			imp.killRoi();
 		
 #		if slc in [z for (x, y, z) in self.roi_list]:
@@ -101,6 +107,9 @@ class ManualSegmentationImageListener(ImageListener):
 
 	def getRoiList(self):
 		return self.roi_list;
+
+	def getMajMinAxesList(self):
+		return self.maj_min_axes_list;
 
 def catmull_rom_spline(P0, P1, P2, P3, n_points=100):
 	"""
@@ -166,7 +175,7 @@ def new_resample_z(spline_points, target_zs):
 	    lf = [abs(spline_z - z_target) for spline_z in spline_zs];
 	    # this might fail when spline has regions of decreasing z!
 	    closest_idx = lf.index(min(lf));
-	    print("Target z = {}, achieved point = {}".format(z_target, spline_points[closest_idx]));
+	    #print("Target z = {}, achieved point = {}".format(z_target, spline_points[closest_idx]));
 	    closest_idxs.append(closest_idx);
 	    out_points.append((spline_points[closest_idx][0], spline_points[closest_idx][1], z_target));
 	# DO SMOOTHING OF OUTPUT POINTS?
@@ -328,10 +337,10 @@ def lin_interp_1d(old_x, old_y, new_x):
 	new_y.append(old_y[-1]);
 	return new_y;
 	
-def straighten_vessel(imp, smooth_centres, it=1):
+def straighten_vessel(imp, smooth_centres, it=1, straightener_width_pix=400):
 	"""use IJ straigtening tool to deal with convoluted vessels"""
 	print("straighten vessel input image dims = " + str(imp.getWidth()) + "x" + str(imp.getHeight()));
-	print("Smooth centers = {}".format(smooth_centres));
+	#print("Smooth centers = {}".format(smooth_centres));
 	input_n_ch = imp.getNChannels();
 	rot_imp = utils.rot3d(imp, axis='x');
 	if it==1:
@@ -354,7 +363,7 @@ def straighten_vessel(imp, smooth_centres, it=1):
 		for chidx in range(input_n_ch):
 			split_ch[chidx].setZ(zidx+1);
 			split_ch[chidx].setRoi(roi);
-			ip = Straightener().straightenLine(split_ch[chidx], 150);
+			ip = Straightener().straightenLine(split_ch[chidx], straightener_width_pix);
 			if chidx==1:
 				if zidx==0:
 					egfp_straight_stack = ImageStack(ip.getWidth(), ip.getHeight());
@@ -403,7 +412,7 @@ def straighten_vessel(imp, smooth_centres, it=1):
 
 def manual_axis_definition(imp, output_path=None):
 	"""perform manual steps to determine vessel centreline"""
-	listener = ManualSegmentationImageListener([]);
+	listener = ManualSegmentationImageListener([], []);
 	imp.addImageListener(listener);
 	IJ.setTool("elliptical");
 	step_size = 100;
@@ -418,19 +427,21 @@ def manual_axis_definition(imp, output_path=None):
 	MyWaitForUser("Manual segmentation...", "Ensure that end (highest z) of the region for unwrapping has a manually defined point...");
 	listener.imageUpdated(imp);
 	manual_centers = listener.getRoiList();
+	maj_minor_axes = listener.getMajMinAxesList();
 	imp.removeImageListener(listener);
 
 	#manual_centers = [(270, 135, 1), (258, 102, 101), (286, 63, 201), (299, 60, 301), (311, 77, 401), (335, 131, 501), (364, 156, 601), (382, 132, 701), (402, 120, 801), (382, 142, 901), (322, 200, 1001)];
 	manual_centers = sorted(manual_centers, key=lambda xyz: xyz[2]);
+	maj_minor_axes = sorted(maj_minor_axes, key=lambda majminz: majminz[2]);
 	spline_interp_centers = catmull_rom_chain(manual_centers, n_points=5*step_size);
 	target_zs = [z for z in range(manual_centers[0][2], manual_centers[-1][2]+1)];
 	output_positions, _ = new_resample_z(spline_interp_centers, target_zs);
-	print(output_positions);
-	print("len(output_positions) = {}".format(len(output_positions)));
+	#print(output_positions);
+	#print("len(output_positions) = {}".format(len(output_positions)));
 	vessel_ax_imp = IJ.createImage("Spline fitted central axis", "16-bit", imp.getWidth(), imp.getHeight(), imp.getNSlices());
 	for zidx, vessel_center in enumerate(output_positions):
 		vessel_ax_imp.setZ(zidx+1);
-		roi = OvalRoi(vessel_center[0], vessel_center[1], 5, 5);
+		roi = OvalRoi(vessel_center[0]-3, vessel_center[1]-3, 6, 6);
 		vessel_ax_imp.setRoi(roi);
 		IJ.run(vessel_ax_imp, "Set...", "value=" + str(vessel_ax_imp.getProcessor().maxValue()) + " slice");
 	vessel_ax_imp.show();
@@ -444,35 +455,59 @@ def manual_axis_definition(imp, output_path=None):
 		FileSaver(out_imp).saveAsTiffStack(os.path.join(output_path, "manually determined vessel axis.tif"));
 	except IOError as e:
 		print(e.message);
-	save_centers(output_positions, output_path);
-	return output_positions, out_imp;
+	save_manual_vessel_axis(output_positions, maj_minor_axes, output_path);
+	
+	return output_positions, out_imp, maj_minor_axes;
 
-def save_centers(centers, output_folder):
+def save_manual_vessel_axis(manual_vessel_axis, manual_vessel_min_maj_axes, output_folder):
 	"""save vessel axis to csv for later loading"""
 	out_path = os.path.join(output_folder, "vessel_axis.csv");
 	f = open(out_path, 'wb');
 	try:
 		writer = csv.writer(f);
-		for c in centers:
+		for c in manual_vessel_axis:
 			writer.writerow([c[0], c[1], c[2]]);
 	except IOError as e:
 		print("problem saving, {}".format(e));
 	finally:
 		f.close();
+	out_path = os.path.join(output_folder, "vessel_major_minor_axes.csv");
+	f = open(out_path, 'wb');
+	try:
+		writer = csv.writer(f);
+		for mjmn in manual_vessel_min_maj_axes:
+			writer.writerow([mjmn[0], mjmn[1], mjmn[2]]);
+	except IOError as e:
+		print("problem saving, {}".format(e));
+	finally:
+		f.close();
 
-def load_centers(centers_path):
+def load_manual_vessel_axis(manual_vessel_axis_path):
 	"""load vessel axis from previously determined data"""
-	f = open(centers_path, 'rb');
+	print("loading vessel axis from {}...".format(manual_vessel_axis_path));
+	f = open(manual_vessel_axis_path, 'rb');
 	centers = [];
 	try:
 		csvreader = csv.reader(f);
 		for row in csvreader:
 			centers.append((float(row[0]), float(row[1]), float(row[2])));
 	except IOError as e:
-		print("problem saving, {}".format(e));
+		print("problem loading, {}".format(e));
 	finally:
 		f.close();
-	return centers;
+	mjmn_axes_path = os.path.join(os.path.dirname(manual_vessel_axis_path), "vessel_major_minor_axes.csv");
+	print("loading vessel radii from {}...".format(mjmn_axes_path));
+	f = open(mjmn_axes_path, 'rb');
+	mjmn_axes = [];
+	try:
+		csvreader = csv.reader(f);
+		for row in csvreader:
+			mjmn_axes.append((float(row[0]), float(row[1]), float(row[2])));
+	except IOError as e:
+		print("problem loading, {}".format(e));
+	finally:
+		f.close();
+	return centers, mjmn_axes;
 
 def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, output_path=output_path, load_centers_path=None):
 	# todo: fix things so that all operations use a consistent definition of background rather than changing Prefs on the fly...
@@ -495,7 +530,7 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 		depth = rot_seg_imp.getNSlices() if rot_seg_imp.getNSlices() > rot_seg_imp.getNFrames() else rot_seg_imp.getNFrames();
 		width = int(round(rot_seg_imp.getWidth() * z_xy_ratio));
 		height = rot_seg_imp.getHeight();
-	print(z_xy_ratio);
+	print("z_xy_ratio = {}".format(z_xy_ratio));
 
 	merged_rotated_imp = RGBStackMerge().mergeChannels([rot_seg_imp, rot_proj_imp], False);
 	#merged_rotated_imp.show();
@@ -509,18 +544,20 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 	FileSaver(merged_rotated_imp).saveAsTiffStack(os.path.join(output_path, "rotated to align z to DV axis.tif"));
 	merge_rot_imp_with_axis = None;
 	if load_centers_path is None:
-		xyz_smooth_centres, merge_rot_imp_with_axis = manual_axis_definition(merged_rotated_imp, output_path=output_path);
+		xyz_smooth_centres, merge_rot_imp_with_axis, maj_minor_axes = manual_axis_definition(merged_rotated_imp, output_path=output_path);
 		utils.convert_multichannel_stack_to_Xbit(merge_rot_imp_with_axis, bitdepth=16);
 		merged_rotated_imp.close();
 	else:
-		xyz_smooth_centres = load_centers(load_centers_path);
-	
+		xyz_smooth_centres, maj_minor_axes = load_manual_vessel_axis(load_centers_path);
+
+	max_axis = max([mj for (mj, _, _) in maj_minor_axes]);
+	min_axis = min([mn for (_, mn, _) in maj_minor_axes]);
 	if merge_rot_imp_with_axis is not None:
-		composite_imp2 = straighten_vessel(merge_rot_imp_with_axis, xyz_smooth_centres);
+		composite_imp2 = straighten_vessel(merge_rot_imp_with_axis, xyz_smooth_centres, straightener_width_pix=int(math.ceil(1.2*max_axis)));
 		merge_rot_imp_with_axis.changes = False;
 		merge_rot_imp_with_axis.close();
 	else:
-		composite_imp2 = straighten_vessel(merged_rotated_imp, xyz_smooth_centres);
+		composite_imp2 = straighten_vessel(merged_rotated_imp, xyz_smooth_centres, straightener_width_pix=int(math.ceil(1.2*max_axis)));
 		merged_rotated_imp.changes = False;
 		merged_rotated_imp.close();
 	
@@ -533,7 +570,7 @@ def do_tubefitting(im_path=im_test_path, metadata_path=metadata_test_path, outpu
 	#MyWaitForUser("pause", "after straightening in second axis");
 	#composite_imp3.hide();
 	#utils.convert_multichannel_stack_to_16bit(composite_imp3);
-	return composite_imp3, info;
+	return composite_imp3, info, xyz_smooth_centres, max_axis, min_axis;
 
 #hsimp.addImageListener(UpdateRoiImageListener(rois));
 
