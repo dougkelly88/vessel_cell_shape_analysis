@@ -251,6 +251,7 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val, smooth
 	bp.erode();
 	mask_imp = ImagePlus("Mask", bp);
 	tile_mask = make_tiled_imp(mask_imp);
+	IJ.run(tile_mask, "Fill Holes", "");
 	#tile_mask.show();
 	#WaitForUserDialog("pasue - generated mask").show();
 	mask_imp = do_unwrap(tile_mask, unwrap_axis, imp_title=mask_imp.getTitle());
