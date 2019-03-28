@@ -196,7 +196,7 @@ def choose_series(filepath, info):
 def save_projection_csv(output_path, info, data, headers=None):
 	"""save results of projection shape analysis to csv"""
 	if headers is None:
-		headers = ["Input image file", "Analysis output folder", "Vessel type", "Cell area", "Cell aspect ratio"];
+		headers = ["Input image file", "Analysis output folder", "Vessel type", "Cell area", "Cell aspect ratio", "Minimum radius", "Maximum radius"];
 	csv_path = os.path.join(os.path.dirname(output_path), "results.csv");
 	csv_exists = os.path.isfile(csv_path);
 	f_open_mode = 'ab' if csv_exists else 'wb';
