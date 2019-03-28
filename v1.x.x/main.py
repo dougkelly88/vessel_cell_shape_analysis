@@ -22,11 +22,11 @@ import file_io as io
 
 Prefs.blackBackground = True;
 
-root_input_path = "D:\\source\\vascular_morphogenesis_ij\\marcksl1 cell shape analysis\\v1.x.x\\test_data";
-root_output_path = "D:\\source\\vascular_morphogenesis_ij\\marcksl1 cell shape analysis\\v1.x.x\\test_data_out";
+#root_input_path = "D:\\source\\vascular_morphogenesis_ij\\marcksl1 cell shape analysis\\v1.x.x\\test_data";
+#root_output_path = "D:\\source\\vascular_morphogenesis_ij\\marcksl1 cell shape analysis\\v1.x.x\\test_data_out";
 
-#root_input_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Control LynEGFP\\Cropped\\2019-03-01 10-59-05 output";
-#root_output_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Control LynEGFP\\shape analysis out3";
+root_input_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Control LynEGFP\\Cropped\\2019-03-01 10-59-05 output";
+root_output_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Control LynEGFP\\shape analysis out3";
 #fs = [f for f in os.listdir(root_input_path) if (os.path.splitext(f)[1]=='.tif' and "isv" in os.path.basename(f).lower())];
 fs = [f for f in os.listdir(root_input_path) if (os.path.splitext(f)[1]=='.tif')];
 
@@ -93,7 +93,7 @@ for f in fs:
 	print("starting unwrapping of cell from around vessel wall...");
 	t1 = datetime.now();
 	unwrapped_projection_imp, unwrap_axis = prj.twist_and_unwrap(out_imp);
-	IJ.setAutoThreshold(unwrapped_projection_imp, "Li dark");
+	IJ.setAutoThreshold(unwrapped_projection_imp, "Intermodes dark");
 	threshold_val = unwrapped_projection_imp.getProcessor().getMinThreshold();
 	print("threshold_val = {}".format(threshold_val));
 	FileSaver(unwrapped_projection_imp).saveAsTiff(os.path.join(output_path, "unwrapped cell.tif"));
