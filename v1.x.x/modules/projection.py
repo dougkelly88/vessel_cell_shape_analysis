@@ -329,9 +329,10 @@ def calculate_area_and_aspect_ratio(r_imp, mask_imp, raw_voxel_side):
 		widths[point.y - min_y] = widths[point.y - min_y] + fp.getPixelValue(point.x, point.y) * raw_voxel_side * 2 * math.pi/360;
 		#widths[point.y - min_y] = widths[point.y - min_y] + 50 * raw_voxel_side * 2 * math.pi/360; # debug
 	aspect_ratio_circumferential_to_axial = (sum(widths)/len(widths)) / (raw_height * raw_voxel_side);
+	aspect_ratio_fitted_ellipse_IJ = stats.major/stats.minor;
 	area = sum(widths) * raw_voxel_side;
 	
-	return area, aspect_ratio_circumferential_to_axial, stats.min * raw_voxel_side, stats.max * raw_voxel_side;
+	return area, aspect_ratio_fitted_ellipse_IJ, stats.min * raw_voxel_side, stats.max * raw_voxel_side;
 	
 def do_slicewise_unwrap(imp):
 	"""at each position along the lumen axis, get a shell from around the lumen and take the maximum in the cell channel"""
