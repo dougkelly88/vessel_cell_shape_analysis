@@ -261,6 +261,9 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val, smooth
 	IJ.run(mask_imp, "Fill Holes", "");
 	#WaitForUserDialog("pasue - filled holes").show();
 	IJ.run(mask_imp, "Divide...", "value=255");
+	bp = mask_imp.getProcessor();
+	bp.setThreshold(0.5, bp.maxValue(), FloatProcessor.NO_LUT_UPDATE);
+	keep_largest_blob(mask_imp);
 
 	r_list = [];
 	for lidx, (roi, centre) in enumerate(zip(ring_rois, centres)):
