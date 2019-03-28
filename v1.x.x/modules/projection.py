@@ -93,7 +93,7 @@ def do_unwrap(tile_imp, unwrap_axis, imp_title=None):
 		tile_imp.setTitle("twisted and unwrapped")
 	return tile_imp;
 	
-def do_angular_projection(imp, output_path, max_r_pix=60, min_r_pix=10, generate_roi_stack=False, smooth_radius_pix=1):
+def do_angular_projection(imp, output_path, vessel_axis, max_r_pix=60, min_r_pix=10, generate_roi_stack=False, smooth_radius_pix=1):
 	"""perform ray-based projection of vessel wall, c.f. ICY TubeSkinner (Lancino 2018)"""
 	input_n_ch = imp.getNChannels();
 	Prefs.blackBackground = True;
@@ -103,6 +103,8 @@ def do_angular_projection(imp, output_path, max_r_pix=60, min_r_pix=10, generate
 	IJ.setAutoThreshold(mch_imp, "IsoData dark stack");
 	egfp_imp = split_chs[1];
 	proj_imp = Duplicator().run(egfp_imp);
+	#if input_n_ch > 2:
+	#	axis_imp = split_chs[2];
 	if generate_roi_stack:
 		egfp_imp_disp = Duplicator().run(egfp_imp);
 		roi_stack = IJ.createImage("rois", egfp_imp.getWidth(), egfp_imp.getHeight(), egfp_imp.getNSlices(), 16);
@@ -110,59 +112,78 @@ def do_angular_projection(imp, output_path, max_r_pix=60, min_r_pix=10, generate
 	centres = [];
 	projected_im_pix = [];
 	ring_rois = [];
-	#merged_radius_imp = RGBStackMerge().mergeChannels([mch_imp, egfp_imp_disp], True);
-	##IJ.run(merged_radius_imp, "16-bit", "");
-
-	for zidx in range(proj_imp.getNSlices()):
-		if ((zidx+1) % 100)==0:
-			print("Progress = {}%".format(round(100*(float(zidx+1)/proj_imp.getNSlices()))));
+	centre = (proj_imp.getWidth()/2, proj_imp.getHeight()/2)
+	for _, _, z in vessel_axis:
+		z = int(z);
+		if ((z) % 100)==0:
+			print("Progress = {}%".format(round(100*(float(z)/proj_imp.getNSlices()))));
 		projected_im_row = [];
-		proj_imp.setZ(zidx+1);
-		mch_imp.setZ(zidx+1);
-		bp = mch_imp.createThresholdMask();
-		bp.dilate();
-		bp.erode();
-		bp.erode();
-		bp.erode();
-		mask_imp = ImagePlus("mask", bp);
-		IJ.run(mask_imp, "Create Selection", "");
-		roi = mask_imp.getRoi();
-		if roi is not None:
+		proj_imp.setZ(z);
+		centres.append(centre);
+		#if input_n_ch < 3:
+		#	mch_imp.setZ(z);
+		#	bp = mch_imp.createThresholdMask();
+		#	bp.dilate();
+		#	bp.erode();
+		#	bp.erode();
+		#	bp.erode();
+		#	mask_imp = ImagePlus("mask", bp);
+		#	mask_imp.show();
+		#	#MyWaitForUser("pause", "pause after mask");
+		#	IJ.run(mask_imp, "Create Selection", "");
+		#	roi = mask_imp.getRoi();
+		#	proj_imp.setRoi(roi);
+		#	IJ.run(proj_imp, "Set...", "value=0 slice");
+		#	proj_imp.setRoi(roi);
+		#	IJ.run(proj_imp, "Make Inverse", "");
+		#	roi = proj_imp.getRoi();
+		#	centre = (roi.getStatistics().xCentroid, roi.getStatistics().yCentroid);
+		#	#print("centre = {}".format(centre));
+		#	centres.append(centre);
+		#else:
+		#	axis_imp.setZ(z);
+		#	ip = axis_imp.getProcessor();
+		#	ip.setThreshold(255, ip.maxValue(), FloatProcessor.NO_LUT_UPDATE);
+		#	bp = axis_imp.createThresholdMask();
+		#	bp.dilate();
+		#	mask_imp = ImagePlus("mask", bp);
+		#	#mask_imp.show();
+		#	IJ.run(mask_imp, "Create Selection", "");
+		#	roi = mask_imp.getRoi();
+		#	centre = (roi.getStatistics().xCentroid, roi.getStatistics().yCentroid);
+		#	#print("centre = {}".format(centre));
+		#	centres.append(centre);
+		#	mask_imp.close();
+		##proj_imp.show();
+		#if roi is not None:
+		ring_roi_xs = [];
+		ring_roi_ys = [];
+		for theta in range(360):
+			pt1 = (centre[0] + min_r_pix * math.cos(math.radians(theta)), 
+					centre[1] + min_r_pix * math.sin(math.radians(theta)));
+			pt2 = (centre[0] + max_r_pix * math.cos(math.radians(theta)), 
+					centre[1] + max_r_pix * math.sin(math.radians(theta)));
+			roi = Line(pt1[0], pt1[1], pt2[0], pt2[1]);
 			proj_imp.setRoi(roi);
-			IJ.run(proj_imp, "Set...", "value=0 slice");
-			proj_imp.setRoi(roi);
-			IJ.run(proj_imp, "Make Inverse", "");
-			roi = proj_imp.getRoi();
-			centre = (roi.getStatistics().xCentroid, roi.getStatistics().yCentroid);
-			centres.append(centre);
-			ring_roi_xs = [];
-			ring_roi_ys = [];
-			for theta in range(360):
-				pt1 = (centre[0] + min_r_pix * math.cos(math.radians(theta)), 
-						centre[1] + min_r_pix * math.sin(math.radians(theta)));
-				pt2 = (centre[0] + max_r_pix * math.cos(math.radians(theta)), 
-						centre[1] + max_r_pix * math.sin(math.radians(theta)));
-				roi = Line(pt1[0], pt1[1], pt2[0], pt2[1]);
-				proj_imp.setRoi(roi);
-				profile = roi.getPixels();
-				projected_im_row.append(max(profile));
-				try:
-					ring_roi_xs.append(roi.getContainedPoints()[profile.index(max(profile))].x);
-				except IndexError:
-					ring_roi_xs.append(pt2[0]);
-				try:
-					ring_roi_ys.append(roi.getContainedPoints()[profile.index(max(profile))].y);
-				except IndexError:
-					ring_roi_ys.append(pt2[1]);
-			proj_imp.killRoi();
-			ring_roi = PolygonRoi(ring_roi_xs, ring_roi_ys, Roi.FREELINE);
-			ring_rois.append(ring_roi);
-		else:
-			ring_roi = None;
-			ring_rois.append(None);
-			projected_im_row = [0 for _ in range(360)];
+			profile = roi.getPixels();
+			projected_im_row.append(max(profile));
+			try:
+				ring_roi_xs.append(roi.getContainedPoints()[profile.index(max(profile))].x);
+			except IndexError:
+				ring_roi_xs.append(pt2[0]);
+			try:
+				ring_roi_ys.append(roi.getContainedPoints()[profile.index(max(profile))].y);
+			except IndexError:
+				ring_roi_ys.append(pt2[1]);
+		proj_imp.killRoi();
+		ring_roi = PolygonRoi(ring_roi_xs, ring_roi_ys, Roi.FREELINE);
+		ring_rois.append(ring_roi);
+		#else:
+		#	ring_roi = None;
+		#	ring_rois.append(None);
+		#	projected_im_row = [0 for _ in range(360)];
 		if generate_roi_stack:
-			roi_stack.setZ(zidx+1);
+			roi_stack.setZ(z);
 			#merged_radius_imp.setZ(zidx+1);
 			if ring_roi is not None:
 				roi_stack.setRoi(ring_roi);
@@ -220,12 +241,14 @@ def calculate_mean_r(imp, ring_rois, centres):
 
 def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val, smooth_radius_pix=1):
 	"""for each point in the projection, calculate the distance to the vessel axis and present as an image"""
-	fp = imp.getProcessor()
-	fp.setThreshold(threshold_val, fp.maxValue(), FloatProcessor.NO_LUT_UPDATE);
+	imp.show();
+	fp = imp.getProcessor();
+	fp.setThreshold(threshold_val, fp.maxValue(), FloatProcessor.RED_LUT);
+	print("thresh val = {}".format(threshold_val));
+	print("type fp = {}".format(type(fp)));
 	bp = fp.createMask();
 	bp.dilate();
 	bp.erode();
-
 	mask_imp = ImagePlus("Mask", bp);
 	tile_mask = make_tiled_imp(mask_imp);
 	#tile_mask.show();
@@ -282,13 +305,16 @@ def keep_largest_blob(imp):
 def calculate_area_and_aspect_ratio(r_imp, mask_imp, raw_voxel_side):
 	"""return the area and aspect ratio of the cell based on the projected image and convert to real-world units"""
 	mask_imp.show();
+	MyWaitForUser("pause", "pause at mask imp before calculation");
 	bp = mask_imp.getProcessor();
 	bp.setThreshold(0.5, bp.maxValue(), FloatProcessor.NO_LUT_UPDATE);
 	keep_largest_blob(mask_imp);
+	MyWaitForUser("pause", "pause after keep largest blob");
 	IJ.run(mask_imp, "Create Selection", "");
 	roi = mask_imp.getRoi();
 	r_imp.setRoi(roi);
 	roi = r_imp.getRoi();
+	MyWaitForUser("pause", "pause after getting roi from r_imp");
 	# MyWaitForUser("pause", "pause to check mask has been filtered by size");
 	stats = roi.getStatistics();
 	print("stats = {}".format(stats));
