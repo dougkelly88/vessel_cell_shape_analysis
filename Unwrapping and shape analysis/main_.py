@@ -105,7 +105,7 @@ for f in fs:
 	print("done unwrapping in {} s. ".format(round(0.001*(t2.getTime() - t1.getTime()))));
 	print("start generation of image colormapped by radius...");
 	t1 = datetime.now();
-	r_imp, mask_imp, r_imp_unmasked = prj.generate_r_image(out_imp, ring_rois, centres, unwrap_axis, threshold_val, smooth_radius_pix=int(smooth_radius_um/info.get_xy_pixel_size_um()));
+	r_imp, mask_imp, r_imp_unmasked = prj.generate_r_image(out_imp, unwrapped_projection_imp, ring_rois, centres, unwrap_axis, threshold_val, smooth_radius_pix=int(smooth_radius_um/info.get_xy_pixel_size_um()));
 	FileSaver(r_imp).saveAsTiff(os.path.join(output_path, "radius image.tif"));
 	FileSaver(r_imp_unmasked).saveAsTiff(os.path.join(output_path, "radius image before masking.tif"));
 	FileSaver(mask_imp).saveAsTiff(os.path.join(output_path, "binary cell.tif"));
