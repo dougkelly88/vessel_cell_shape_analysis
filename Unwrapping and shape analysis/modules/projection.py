@@ -15,6 +15,7 @@ def manual_segmentation_intervention(imp, mask_imp):
 	original_roi = mask_imp.getRoi();
 	mask_imp.hide();
 	imp.show();
+	IJ.resetThreshold(imp);
 	imp.setRoi(original_roi);
 	IJ.setTool("freehand");
 	MyWaitForUser("Perform manual segmentation?", "If desired, redraw the cell boundary");
