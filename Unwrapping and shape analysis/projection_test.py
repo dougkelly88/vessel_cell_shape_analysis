@@ -14,7 +14,7 @@ else:
 	script_path = os.getcwd();
 if "Fiji.app" in script_path:
 	ss = script_path.split("Fiji.app");
-	final_folder = "marcksl1 shape prescreener";
+	final_folder = "Unwrapping and shape analysis";
 	script_path = os.path.join(ss[0], "Fiji.app", "plugins", "Scripts", "Plugins", final_folder);
 sys.path.insert(0, os.path.join(script_path, 'modules'));
 sys.path.insert(0, os.path.join(script_path, 'classes'));
