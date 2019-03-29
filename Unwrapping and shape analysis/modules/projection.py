@@ -8,6 +8,28 @@ from ij.plugin.frame import RoiManager
 from ij.measure import ResultsTable
 #from ij.io import FileSaver
 
+def manual_segmentation_intervention(imp, mask_imp):
+	"""allow user to modify cell segmentation mask"""
+	IJ.run(mask_imp, "Create Selection", "");
+	original_roi = mask_imp.getRoi();
+	mask_imp.hide();
+	imp.show();
+	imp.setRoi(original_roi);
+	IJ.setTool("freehand");
+	MyWaitForUser("Perform manual segmentation?", "If desired, redraw the cell boundary");
+	roi = imp.getRoi();
+	if roi is None: 
+		return mask_imp;
+	elif not roi.isArea():
+		return mask_imp;
+	else:
+		IJ.run(mask_imp, "Select All", "");
+		IJ.run(mask_imp, "Set...", "value=0");
+		mask_imp.setRoi(roi);
+		IJ.run(mask_imp, "Set...", "value=1");
+		return mask_imp;
+
+
 def MyWaitForUser(title, message):
 	"""non-modal dialog with option to cancel the analysis"""
 	dialog = NonBlockingGenericDialog(title);
@@ -266,6 +288,7 @@ def generate_r_image(imp, ring_rois, centres, unwrap_axis, threshold_val, smooth
 	bp = mask_imp.getProcessor();
 	bp.setThreshold(0.5, bp.maxValue(), FloatProcessor.NO_LUT_UPDATE);
 	keep_largest_blob(mask_imp);
+	mask_imp = manual_segmentation_intervention(imp, mask_imp);
 
 	r_list = [];
 	for lidx, (roi, centre) in enumerate(zip(ring_rois, centres)):
