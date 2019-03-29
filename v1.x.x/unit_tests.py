@@ -7,7 +7,7 @@ import os, sys, unittest, math
 from ij import IJ
 from ij.gui import EllipseRoi
 
-release = False;
+release = True;
 
 if not release:
 	script_path = os.path.dirname(os.path.realpath(__file__));
