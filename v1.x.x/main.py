@@ -25,9 +25,13 @@ Prefs.blackBackground = True;
 #root_input_path = "D:\\source\\vascular_morphogenesis_ij\\marcksl1 cell shape analysis\\v1.x.x\\test_data";
 #root_output_path = "D:\\source\\vascular_morphogenesis_ij\\marcksl1 cell shape analysis\\v1.x.x\\test_data_out";
 
-root_input_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Control LynEGFP\\Cropped\\2019-03-01 10-59-05 output";
-root_output_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Control LynEGFP\\shape analysis out3";
-#fs = [f for f in os.listdir(root_input_path) if (os.path.splitext(f)[1]=='.tif' and "isv" in os.path.basename(f).lower())];
+#root_input_path = "D:\\data\\2019-02-22 Lumen stained cell shape analysis\\Control LynEGFP\\Cropped\\2019-03-01 10-59-05 output";
+root_input_path = "D:\\data\2019-02-22 Lumen stained cell shape analysis\\Ml1bEGFP\\Cropped\\2019-03-01 10-18-42 output"
+root_output_path = "D:\\analysis\\Data analysed for cell shape analysis\\";
+
+
+root_input_path = io.projection_input_folder_chooser(root_input_path);
+root_output_path = io.projection_output_folder_chooser(root_output_path);
 fs = [f for f in os.listdir(root_input_path) if (os.path.splitext(f)[1]=='.tif')];
 
 for f in fs:

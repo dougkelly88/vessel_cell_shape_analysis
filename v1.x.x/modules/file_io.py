@@ -39,6 +39,24 @@ def file_location_chooser(default_directory):
 		raise IOError('no input file chosen');
 	return file_path;
 
+def projection_input_folder_chooser(default_directory):
+	"""choose where to get input data for projection from"""
+	DirectoryChooser.setDefaultDirectory(default_directory);
+	dc = DirectoryChooser('Select the folder containing pre-processed images...');
+	input_root = dc.getDirectory();
+	if input_root is None:
+		raise IOError('no input path chosen');
+	return input_root;
+
+def projection_output_folder_chooser(default_directory):
+	"""choose where to get input data for projection from"""
+	DirectoryChooser.setDefaultDirectory(default_directory);
+	dc = DirectoryChooser('Select the folder in which to save projection output...');
+	output_root = dc.getDirectory();
+	if output_root is None:
+		raise IOError('no input path chosen');
+	return output_root;
+
 def output_folder_chooser(default_directory):
 	"""choose where output data should be saved"""
 	DirectoryChooser.setDefaultDirectory(default_directory);
