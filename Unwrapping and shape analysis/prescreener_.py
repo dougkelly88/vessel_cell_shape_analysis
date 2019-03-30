@@ -3,7 +3,7 @@ from ij import IJ
 from ij.gui import WaitForUserDialog
 from ij.plugin import Duplicator, ZProjector
 
-release = False;
+release = True;
 
 if not release:
 	script_path = os.path.dirname(os.path.realpath(__file__));
