@@ -140,11 +140,15 @@ def get_image(info, default_path, used_files):
 			check_for_file_overlap_OK = False if dlg.wasCanceled() else True;
 		else:
 			check_for_file_overlap_OK = True;
+	reader = ImageReader();
+	ome_meta = MetadataTools.createOMEXMLMetadata();
+	reader.setMetadataStore(ome_meta);
+	reader.setId(info.get_input_file_path());
 	import_opts, info = choose_series(info.get_input_file_path(), info)
 
 	imps = bf.openImagePlus(import_opts);
 	imp = imps[0];
-	
+	props = imp.getInfoProperty();
 	try:
 		memory_usage = IJ.currentMemory()/IJ.maxMemory();
 		print("memory usage = " +str(memory_usage));
@@ -153,16 +157,24 @@ def get_image(info, default_path, used_files):
 			IJ.run(imp, "8-bit", "");
 			print("WARNING - IMAGE CONVERTED TO 8 BIT TO CONSERVE MEMORY!");
 		info.set_metadata_file_path(os.path.splitext(info.get_input_file_path())[0] + ".txt");
-		metadata = import_iq3_metadata(info.get_metadata_file_path());
-		IJ.run(imp, "Properties...", "channels=" + str(int(metadata['n_channels'])) + 
-										" slices=" + str(int(metadata['z_pixels'])) + 
-										" frames=1 unit=" + str(metadata['x_unit']) + 
-										" pixel_width=" + str(metadata['x_physical_size']) + 
-										" pixel_height=" + str(metadata['y_physical_size']) + 
-										" voxel_depth=" + str(metadata['z_extent']/metadata['z_pixels']));
-		info.set_xy_pixel_size_um(metadata['x_physical_size']);
-		info.set_z_plane_spacing_um(metadata['z_extent']/metadata['z_pixels']);
-		info = parse_info_from_filename(info);
+		if not "MetaMorph" in props:
+			metadata = import_iq3_metadata(info.get_metadata_file_path());
+			IJ.run(imp, "Properties...", "channels=" + str(int(metadata['n_channels'])) + 
+											" slices=" + str(int(metadata['z_pixels'])) + 
+											" frames=1 unit=" + str(metadata['x_unit']) + 
+											" pixel_width=" + str(metadata['x_physical_size']) + 
+											" pixel_height=" + str(metadata['y_physical_size']) + 
+											" voxel_depth=" + str(metadata['z_extent']/metadata['z_pixels']));
+			info.set_xy_pixel_size_um(metadata['x_physical_size']);
+			info.set_z_plane_spacing_um(metadata['z_extent']/metadata['z_pixels']);
+			info = parse_info_from_filename(info);
+		else:
+			print("is metamorph");
+			print("xy_pixel_size_um  = {}".format(ome_meta.getPixelsPhysicalSizeX(0).value()));
+			print("z_plane_spacing_um = {}".format(ome_meta.getPixelsPhysicalSizeZ(0).value()));
+			info.set_xy_pixel_size_um(ome_meta.getPixelsPhysicalSizeX(0).value());
+			info.set_z_plane_spacing_um(ome_meta.getPixelsPhysicalSizeZ(0).value());
+			info = parse_info_from_filename(info);
 	except e as Exception:
 		print(e.message);
 	finally:

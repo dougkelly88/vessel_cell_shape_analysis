@@ -38,6 +38,7 @@ def z_crop(imp):
 
 def perform_cropping(imp, info, output_folder, default_path):
 	imp.show();
+	print("C = {}, Z = {}, T = {}".format(imp.getNChannels(), imp.getNSlices(), imp.getNFrames()));
 	imp.setC(info.get_mosaic_labeled_ch());
 	IJ.run("Enhance Contrast", "saturated=0.35");
 	zcrop_imp, z_lims = z_crop(imp);
